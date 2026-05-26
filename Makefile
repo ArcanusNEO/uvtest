@@ -30,7 +30,14 @@ clean:
 cmacs.h:
 	$(WGET) -O $@ https://raw.github.com/ArcanusNEO/cmacs/master/cmacs.h
 
-extern:
+extern: extern/a5hash.h extern/yyjson.h
 	@install -d extern
+extern/a5hash.h:
+	@install -d extern
+	$(WGET) -O $@ https://raw.github.com/avaneev/a5hash/main/a5hash.h
+extern/yyjson.h:
+	@install -d extern
+	$(WGET) -O extern/yyjson.c https://raw.github.com/ibireme/yyjson/master/src/yyjson.c
+	$(WGET) -O $@ https://raw.github.com/ibireme/yyjson/master/src/yyjson.h
 
 .SECONDARY: $(OBJ)
