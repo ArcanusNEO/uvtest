@@ -15,10 +15,9 @@ on_read (uv_stream_t *client, ssize_t nread, uv_buf_t const *buf)
 {
   if (nread < 0)
     {
-      uv_close ((void *)client, null);
       free (buf->base - sizeof (uv_buf_t));
-      free (client);
-      return;
+      uv_close ((void *)client, null);
+      return free (client);
     }
   uv_write_t *req = malloc$ (sizeof (uv_write_t));
   req->data = buf->base;
@@ -44,13 +43,12 @@ on_connection (uv_stream_t *srv, int status)
     return;
   uv_tcp_t *client = malloc$ (sizeof (uv_tcp_t));
   uv_tcp_init (srv->loop, client);
-  if (uv_accept (srv, (void *)client) == 0)
-    uv_read_start ((void *)client, on_ralloc, on_read);
-  else
+  if (uv_accept (srv, (void *)client) < 0)
     {
       uv_close ((void *)client, null);
-      free (client);
+      return free (client);
     }
+  uv_read_start ((void *)client, on_ralloc, on_read);
 }
 
 int
