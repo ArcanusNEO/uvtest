@@ -6,7 +6,7 @@ uv_tcp_t server;
 static void
 on_write (uv_write_t *req, int status)
 {
-  uv_buf_t *buf = req->data;
+  uv_buf_t *buf = (void *)req + sizeof (uv_write_t);
   free (buf->base);
   free (req);
 }
@@ -14,14 +14,17 @@ on_write (uv_write_t *req, int status)
 static void
 on_read (uv_stream_t *client, ssize_t nread, uv_buf_t const *buf)
 {
-  if (nread < 0)
+  if (nread <= 0)
     {
       free (buf->base);
-      uv_close ((void *)client, null);
-      return free (client);
+      if (nread < 0)
+        {
+          uv_close ((void *)client, null);
+          return free (client);
+        }
     }
   uv_write_t *wreq = malloc$ (sizeof (uv_write_t), sizeof (uv_buf_t));
-  uv_buf_t *wbuf = wreq->data = (byte *)wreq + sizeof (uv_write_t);
+  uv_buf_t *wbuf = (void *)wreq + sizeof (uv_write_t);
   wbuf->base = buf->base;
   wbuf->len = nread;
   uv_write (wreq, client, wbuf, 1, on_write);
@@ -52,9 +55,9 @@ on_connection (uv_stream_t *srv, int status)
 int
 main (int argc, char *argv[])
 {
+  signal (SIGPIPE, SIG_IGN);
   if (argc < 3)
     return 1;
-  signal (SIGPIPE, SIG_IGN);
   auto loop = uv_default_loop ();
   uv_tcp_init (loop, &server);
   struct sockaddr_in addr;
