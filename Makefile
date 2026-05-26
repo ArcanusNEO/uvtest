@@ -31,6 +31,6 @@ cmacs.h:
 	$(WGET) -O $@ https://raw.github.com/ArcanusNEO/cmacs/master/cmacs.h
 
 extern:
-	-@install -d extern
+	@install -d extern
 
 .SECONDARY: $(OBJ)
