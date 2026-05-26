@@ -20,8 +20,10 @@ on_read (uv_stream_t *client, ssize_t nread, uv_buf_t const *buf)
       if (nread < 0)
         {
           uv_close ((void *)client, null);
-          return free (client);
+          free (client);
+          return;
         }
+      return;
     }
   uv_write_t *wreq = malloc$ (sizeof (uv_write_t), sizeof (uv_buf_t));
   uv_buf_t *wbuf = (void *)wreq + sizeof (uv_write_t);
@@ -47,7 +49,8 @@ on_connection (uv_stream_t *srv, int status)
   if (uv_accept (srv, (void *)client) < 0)
     {
       uv_close ((void *)client, null);
-      return free (client);
+      free (client);
+      return;
     }
   uv_read_start ((void *)client, on_ralloc, on_read);
 }
