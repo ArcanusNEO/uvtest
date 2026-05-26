@@ -10,21 +10,18 @@ WGET := wget -qc --show-progress -t 3 --waitretry=3
 CFLAGS ?= -O2 -fno-plt -pipe -flto=auto
 CFLAGS += -pthread -fwrapv -fms-extensions -Wall -Wvla -Wno-parentheses -Wno-microsoft -I$(CURDIR) -I$(CURDIR)/extern
 LDFLAGS ?= -Wl,-O1
-LDLIBS += -lm -lpthread -luv -lllhttp
+LDLIBS += -lm -lpthread -luv -lllhttp -lcaster
 
-all: echo rest
+all: main
 
-echo: echo.o
-	$(LINK.o) $^ $(LOADLIBES) $(LDLIBS) -o $@
-
-rest: rest.o
+main: main.o
 	$(LINK.o) $^ $(LOADLIBES) $(LDLIBS) -o $@
 
 %.o: %.c
 	$(COMPILE.c) $< -o $@
 
 clean:
-	$(RM) -- $(OBJ) $(DEP) echo rest
+	$(RM) -- $(OBJ) $(DEP) main
 
 -include $(DEP)
 %.d: %.c cmacs.h extern
