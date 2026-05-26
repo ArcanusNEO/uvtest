@@ -6,7 +6,8 @@ uv_tcp_t server;
 static void
 on_write (uv_write_t *req, int status)
 {
-  free (req->data - sizeof (uv_buf_t));
+  uv_buf_t *buf = req->data;
+  free (buf->base);
   free (req);
 }
 
@@ -15,25 +16,22 @@ on_read (uv_stream_t *client, ssize_t nread, uv_buf_t const *buf)
 {
   if (nread < 0)
     {
-      free (buf->base - sizeof (uv_buf_t));
+      free (buf->base);
       uv_close ((void *)client, null);
       return free (client);
     }
-  uv_write_t *req = malloc$ (sizeof (uv_write_t));
-  req->data = buf->base;
-  uv_buf_t *wbuf = req->data - sizeof (uv_buf_t);
+  uv_write_t *wreq = malloc$ (sizeof (uv_write_t), sizeof (uv_buf_t));
+  uv_buf_t *wbuf = wreq->data = (byte *)wreq + sizeof (uv_write_t);
+  wbuf->base = buf->base;
   wbuf->len = nread;
-  uv_write (req, client, wbuf, 1, on_write);
+  uv_write (wreq, client, wbuf, 1, on_write);
 }
 
 static void
 on_ralloc (uv_handle_t *handle, size_t siz, uv_buf_t *buf)
 {
-  uv_buf_t *mem = malloc$ (sizeof (uv_buf_t), siz);
-  buf->base = (void *)mem + sizeof (uv_buf_t);
+  buf->base = malloc$ (siz);
   buf->len = siz;
-  mem->base = buf->base;
-  mem->len = buf->len;
 }
 
 static void
