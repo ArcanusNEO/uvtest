@@ -18,12 +18,10 @@ on_read (uv_stream_t *client, ssize_t nread, uv_buf_t const *buf)
     {
       free (buf->base);
       if (nread < 0)
-        {
-          uv_close ((void *)client, null);
-          free (client);
-        }
+        uv_close ((uv_handle_t *)client, (uv_close_cb)free);
       return;
     }
+
   uv_write_t *wreq = malloc$ (sizeof (uv_write_t), sizeof (uv_buf_t));
   uv_buf_t *wbuf = (void *)wreq + sizeof (uv_write_t);
   wbuf->base = buf->base;
@@ -45,13 +43,9 @@ on_connection (uv_stream_t *srv, int status)
     return;
   uv_tcp_t *client = malloc$ (sizeof (uv_tcp_t));
   uv_tcp_init (srv->loop, client);
-  if (uv_accept (srv, (void *)client) < 0)
-    {
-      uv_close ((void *)client, null);
-      free (client);
-      return;
-    }
-  uv_read_start ((void *)client, on_ralloc, on_read);
+  if (uv_accept (srv, (uv_stream_t *)client) < 0)
+    return uv_close ((uv_handle_t *)client, (uv_close_cb)free);
+  uv_read_start ((uv_stream_t *)client, on_ralloc, on_read);
 }
 
 int
@@ -64,8 +58,8 @@ main (int argc, char *argv[])
   uv_tcp_init (loop, &server);
   struct sockaddr_in addr;
   uv_ip4_addr (argv[1], atoi (argv[2]), &addr);
-  uv_tcp_bind (&server, (void *)&addr, 0);
-  if (uv_listen ((void *)&server, 1024, on_connection) < 0)
+  uv_tcp_bind (&server, (struct sockaddr *)&addr, 0);
+  if (uv_listen ((uv_stream_t *)&server, 1024, on_connection) < 0)
     return 1;
   return uv_run (loop, UV_RUN_DEFAULT);
 }
