@@ -21,7 +21,6 @@ on_read (uv_stream_t *client, ssize_t nread, uv_buf_t const *buf)
         {
           uv_close ((void *)client, null);
           free (client);
-          return;
         }
       return;
     }
