@@ -8,13 +8,13 @@ DEP := $(patsubst %.c, %.d, $(SRC))
 WGET := wget -qc --show-progress -t 3 --waitretry=3
 
 CFLAGS ?= -O2 -fno-plt -pipe -flto=auto
-CFLAGS += -pthread -fwrapv -fms-extensions -Wall -Wvla -Wno-parentheses -Wno-microsoft -I$(CURDIR) -I$(CURDIR)/extern
+CFLAGS += -fwrapv -fms-extensions -Wall -Wvla -Wno-parentheses -Wno-microsoft -I$(CURDIR) -I$(CURDIR)/extern
 LDFLAGS ?= -Wl,-O1
-LDLIBS += -lm -lpthread -luv
+LDLIBS += -lm -luv
 
-all: echo
+all: main
 
-echo: echo.o
+main: main.o
 	$(LINK.o) $^ $(LOADLIBES) $(LDLIBS) -o $@
 
 %.o: %.c
@@ -30,14 +30,7 @@ clean:
 cmacs.h:
 	$(WGET) -O $@ https://raw.github.com/ArcanusNEO/cmacs/master/cmacs.h
 
-extern: extern/a5hash.h extern/yyjson.h
+extern:
 	@install -d extern
-extern/a5hash.h:
-	@install -d extern
-	$(WGET) -O $@ https://raw.github.com/avaneev/a5hash/main/a5hash.h
-extern/yyjson.h:
-	@install -d extern
-	$(WGET) -O extern/yyjson.c https://raw.github.com/ibireme/yyjson/master/src/yyjson.c
-	$(WGET) -O $@ https://raw.github.com/ibireme/yyjson/master/src/yyjson.h
 
 .SECONDARY: $(OBJ)
