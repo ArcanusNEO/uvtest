@@ -20,7 +20,6 @@ struct h1_client
   uv_buf_t write_buffer;
   llhttp_t parser;
   llhttp_settings_t settings;
-  bsto *header;
   bsto *body;
   bsto *response;
 };
@@ -32,8 +31,7 @@ free_http (struct h1_client *client)
     return;
   free (client->response);
   free (client->body);
-  free (client->header);
-  client->header = client->body = client->response = null;
+  client->body = client->response = null;
 }
 
 static void
@@ -43,7 +41,6 @@ free_client (struct h1_client *client)
     return;
   free (client->response);
   free (client->body);
-  free (client->header);
   free (client);
 }
 
@@ -92,11 +89,11 @@ handle_http_request (struct h1_client *client)
   uv_close ((uv_handle_t *)client, (uv_close_cb)free_client);
 }
 
-static int
-on_headers_complete (llhttp_t *parser)
-{
-  return HPE_OK;
-}
+/* static int */
+/* on_headers_complete (llhttp_t *parser) */
+/* { */
+/*   return HPE_OK; */
+/* } */
 
 static int
 on_body (llhttp_t *parser, char const *at, usz len)
@@ -128,7 +125,7 @@ on_connection (uv_stream_t *srv, int status)
   if (uv_accept (srv, (uv_stream_t *)client) < 0)
     return uv_close ((uv_handle_t *)client, (uv_close_cb)free);
   llhttp_settings_init (&client->settings);
-  client->settings.on_headers_complete = on_headers_complete;
+  /* client->settings.on_headers_complete = on_headers_complete; */
   client->settings.on_body = on_body;
   client->settings.on_message_complete = on_message_complete;
   llhttp_init (&client->parser, HTTP_BOTH, &client->settings);
