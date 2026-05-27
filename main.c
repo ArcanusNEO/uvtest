@@ -1,6 +1,5 @@
 #include <uv.h>
 #include <llhttp.h>
-#include "yyjson.h"
 #include <grimoire.h>
 
 #define H1 "HTTP/1.1"
@@ -31,8 +30,11 @@ on_read (uv_stream_t *stream, ssize_t nread, uv_buf_t const *buf)
       return;
     }
   struct h1_client *client = stream->data;
-  auto err = llhttp_execute (&client->parser, buf->base, nread);
-  /* todo$ (); */
+  if (llhttp_execute (&client->parser, buf->base, nread) != HPE_OK)
+    {
+      /* todo$ (); */
+    }
+  free (buf->base);
 }
 
 static void
