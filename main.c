@@ -26,7 +26,7 @@ struct h1_client
 };
 
 static void
-freehttp (struct h1_client *client)
+free_http (struct h1_client *client)
 {
   if (!client)
     return;
@@ -37,7 +37,7 @@ freehttp (struct h1_client *client)
 }
 
 static void
-freeclient (struct h1_client *client)
+free_client (struct h1_client *client)
 {
   if (!client)
     return;
@@ -54,7 +54,7 @@ on_read (uv_stream_t *stream, ssize_t nread, uv_buf_t const *buf)
     {
       free (buf->base);
       if (nread < 0)
-        uv_close ((uv_handle_t *)stream, (uv_close_cb)freeclient);
+        uv_close ((uv_handle_t *)stream, (uv_close_cb)free_client);
       return;
     }
   auto client = (struct h1_client *)stream;
@@ -64,7 +64,7 @@ on_read (uv_stream_t *stream, ssize_t nread, uv_buf_t const *buf)
       client->write_buffer.len = sizeof (H1_400) - 1;
       uv_write (&client->write_request, stream, &client->write_buffer, 1,
                 null);
-      uv_close ((uv_handle_t *)stream, (uv_close_cb)freeclient);
+      uv_close ((uv_handle_t *)stream, (uv_close_cb)free_client);
     }
   free (buf->base);
 }
@@ -86,10 +86,10 @@ handle_http_request (struct h1_client *client)
   if (keep_alive)
     {
       llhttp_init (&client->parser, HTTP_BOTH, &client->settings);
-      freehttp (client);
+      free_http (client);
       return;
     }
-  uv_close ((uv_handle_t *)client, (uv_close_cb)freeclient);
+  uv_close ((uv_handle_t *)client, (uv_close_cb)free_client);
 }
 
 static int
