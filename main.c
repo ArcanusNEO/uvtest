@@ -3,9 +3,12 @@
 #include "yyjson.h"
 #include <grimoire.h>
 
+#define H1 "HTTP/1.1"
+#define H1_EOL "\r\n"
+
 uv_tcp_t server;
 
-struct http_client
+struct h1_client
 {
   uv_tcp_t tcp_handle;
   uv_write_t write_request;
@@ -18,14 +21,6 @@ struct http_client
 };
 
 static void
-on_write (uv_write_t *req, int status)
-{
-  uv_buf_t *buf = (void *)req + sizeof (uv_write_t);
-  free (buf->base);
-  free (req);
-}
-
-static void
 on_read (uv_stream_t *stream, ssize_t nread, uv_buf_t const *buf)
 {
   if (nread <= 0)
@@ -35,12 +30,9 @@ on_read (uv_stream_t *stream, ssize_t nread, uv_buf_t const *buf)
         uv_close ((uv_handle_t *)stream, (uv_close_cb)free);
       return;
     }
-
-  uv_write_t *wreq = malloc$ (sizeof (uv_write_t), sizeof (uv_buf_t));
-  uv_buf_t *wbuf = (void *)wreq + sizeof (uv_write_t);
-  wbuf->base = buf->base;
-  wbuf->len = nread;
-  uv_write (wreq, stream, wbuf, 1, on_write);
+  struct h1_client *client = stream->data;
+  auto err = llhttp_execute (&client->parser, buf->base, nread);
+  /* todo$ (); */
 }
 
 static void
@@ -51,8 +43,9 @@ on_read_alloc (uv_handle_t *handle, size_t siz, uv_buf_t *buf)
 }
 
 static void
-handle_http_request (struct http_client *client)
+handle_http_request (struct h1_client *client)
 {
+  /* todo$ (); */
 }
 
 static int
@@ -64,7 +57,7 @@ on_headers_complete (llhttp_t *parser)
 static int
 on_body (llhttp_t *parser, char const *at, usz len)
 {
-  struct http_client *client = parser->data;
+  struct h1_client *client = parser->data;
   usz siz = client->body->size;
   client->body = rebin$ (client->body, siz + len);
   clogger (ASSERT, client->body->size == siz + len);
@@ -75,7 +68,7 @@ on_body (llhttp_t *parser, char const *at, usz len)
 static int
 on_message_complete (llhttp_t *parser)
 {
-  struct http_client *client = parser->data;
+  struct h1_client *client = parser->data;
   handle_http_request (client);
   return HPE_OK;
 }
@@ -85,7 +78,7 @@ on_connection (uv_stream_t *srv, int status)
 {
   if (status < 0)
     return;
-  struct http_client *client = calloc$ (sizeof (client));
+  struct h1_client *client = calloc$ (sizeof (client));
   uv_tcp_init (srv->loop, &client->tcp_handle);
   client->tcp_handle.data = client;
   if (uv_accept (srv, (uv_stream_t *)client) < 0)
