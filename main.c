@@ -26,7 +26,7 @@ struct h1_client
 };
 
 static void
-freeclientex (struct h1_client *client)
+freehttp (struct h1_client *client)
 {
   if (!client)
     return;
@@ -86,7 +86,7 @@ handle_http_request (struct h1_client *client)
   if (keep_alive)
     {
       llhttp_init (&client->parser, HTTP_BOTH, &client->settings);
-      freeclientex (client);
+      freehttp (client);
       return;
     }
   uv_close ((uv_handle_t *)client, (uv_close_cb)freeclient);
