@@ -4,6 +4,12 @@
 
 #define H1 "HTTP/1.1"
 #define H1_EOL "\r\n"
+#define H1_400                                                                \
+  "HTTP/1.1 400 Bad Request\r\n"                                              \
+  "Content-Length: 11\r\n"                                                    \
+  "Connection: close\r\n"                                                     \
+  "\r\n"                                                                      \
+  "Bad Request"
 
 uv_tcp_t server;
 
@@ -20,6 +26,17 @@ struct h1_client
 };
 
 static void
+freeclient (struct h1_client *client)
+{
+  if (!client)
+    return;
+  free (client->response);
+  free (client->body);
+  free (client->header);
+  free (client);
+}
+
+static void
 on_read (uv_stream_t *stream, ssize_t nread, uv_buf_t const *buf)
 {
   if (nread <= 0)
@@ -29,10 +46,14 @@ on_read (uv_stream_t *stream, ssize_t nread, uv_buf_t const *buf)
         uv_close ((uv_handle_t *)stream, (uv_close_cb)free);
       return;
     }
-  struct h1_client *client = stream->data;
+  auto client = (struct h1_client *)stream;
   if (llhttp_execute (&client->parser, buf->base, nread) != HPE_OK)
     {
-      /* todo$ (); */
+      client->write_buffer.base = H1_400;
+      client->write_buffer.len = sizeof (H1_400) - 1;
+      uv_write (&client->write_request, stream, &client->write_buffer, 1,
+                null);
+      uv_close ((uv_handle_t *)stream, (uv_close_cb)freeclient);
     }
   free (buf->base);
 }
