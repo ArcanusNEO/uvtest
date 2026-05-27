@@ -43,7 +43,7 @@ on_read (uv_stream_t *stream, ssize_t nread, uv_buf_t const *buf)
     {
       free (buf->base);
       if (nread < 0)
-        uv_close ((uv_handle_t *)stream, (uv_close_cb)free);
+        uv_close ((uv_handle_t *)stream, (uv_close_cb)freeclient);
       return;
     }
   auto client = (struct h1_client *)stream;
@@ -106,14 +106,12 @@ on_connection (uv_stream_t *srv, int status)
   client->tcp_handle.data = client;
   if (uv_accept (srv, (uv_stream_t *)client) < 0)
     return uv_close ((uv_handle_t *)client, (uv_close_cb)free);
-
   llhttp_settings_init (&client->settings);
   client->settings.on_headers_complete = on_headers_complete;
   client->settings.on_body = on_body;
   client->settings.on_message_complete = on_message_complete;
   llhttp_init (&client->parser, HTTP_BOTH, &client->settings);
   client->parser.data = client;
-
   uv_read_start ((uv_stream_t *)client, on_read_alloc, on_read);
 }
 
