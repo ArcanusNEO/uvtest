@@ -26,6 +26,17 @@ struct h1_client
 };
 
 static void
+freeclientex (struct h1_client *client)
+{
+  if (!client)
+    return;
+  free (client->response);
+  free (client->body);
+  free (client->header);
+  client->header = client->body = client->response = null;
+}
+
+static void
 freeclient (struct h1_client *client)
 {
   if (!client)
@@ -68,7 +79,17 @@ on_read_alloc (uv_handle_t *handle, size_t siz, uv_buf_t *buf)
 static void
 handle_http_request (struct h1_client *client)
 {
+  int keep_alive = llhttp_should_keep_alive (&client->parser);
+
   /* todo$ (); */
+
+  if (keep_alive)
+    {
+      llhttp_init (&client->parser, HTTP_BOTH, &client->settings);
+      freeclientex (client);
+      return;
+    }
+  uv_close ((uv_handle_t *)client, (uv_close_cb)freeclient);
 }
 
 static int
