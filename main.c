@@ -11,6 +11,7 @@
   "\r\n"                                                                      \
   "Bad Request"
 #define H1_SRV "Server: Apache\r\n"
+#define H1_CONTENT_LEN "Content-Length: %zu\r\n"
 
 uv_tcp_t server;
 
@@ -72,21 +73,25 @@ on_read_alloc (uv_handle_t *handle, size_t siz, uv_buf_t *buf)
 }
 
 void
-response (struct h1_client *client, char *header, usz length, byte *content)
+response (struct h1_client *client, char *header, byte *content, usz length)
 {
-  usz siz = strlen (header);
-  usz tot = sizeof (H1) + siz + sizeof (H1_SRV) + length + 128;
+  usz hsiz = strlen (header);
+  usz tot = sizeof (H1) + hsiz + sizeof (H1_SRV) + sizeof (H1_CONTENT_LEN)
+            + sizeof (quote$ (SIZE_MAX)) * 1 + length + 64;
   client->write_buffer.len = tot;
-  char *res = client->write_buffer.base = malloc$ (tot);
-  memcpy (res, H1, sizeof (H1) - 1);
-  res += sizeof (H1) - 1;
-  *res++ = ' ';
-  memcpy (res, header, siz);
-  res += siz;
-  memcpy (res, H1_SRV, sizeof (H1_SRV) - 1);
-  res += sizeof (H1_SRV) - 1;
-  char cl[] = "Content-Length: ";
-  /* memcpy (res, "Content-Length: "); */
+  char *ptr = client->write_buffer.base = malloc$ (tot);
+  memcpy (ptr, H1, sizeof (H1) - 1);
+  ptr += sizeof (H1) - 1;
+  *ptr++ = ' ';
+  memcpy (ptr, header, hsiz);
+  ptr += hsiz;
+  memcpy (ptr, H1_SRV, sizeof (H1_SRV) - 1);
+  ptr += sizeof (H1_SRV) - 1;
+  ptr += sprintf (ptr, H1_CONTENT_LEN, length);
+  memcpy (ptr, H1_EOL, sizeof (H1_EOL) - 1);
+  ptr += sizeof (H1_EOL) - 1;
+  memcpy (ptr, content, length);
+  ptr += length;
 }
 
 static void
