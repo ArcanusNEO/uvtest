@@ -8,7 +8,7 @@ DEP := $(patsubst %.c, %.d, $(SRC))
 WGET := wget -qc --show-progress -t 3 --waitretry=3
 
 CFLAGS ?= -O2 -fno-plt -pipe -flto=auto
-CFLAGS += -pthread -fwrapv -fms-extensions -Wall -Wvla -Wno-parentheses -Wno-microsoft -I$(CURDIR) -I$(CURDIR)/extern
+CFLAGS += -std=gnu23 -pthread -fwrapv -fms-extensions -Wall -Wvla -Wno-parentheses -Wno-microsoft -I$(CURDIR) -I$(CURDIR)/extern
 LDFLAGS ?= -Wl,-O1
 LDLIBS += -lm -lpthread -luv -lllhttp -lcaster
 

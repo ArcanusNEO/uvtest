@@ -10,6 +10,7 @@
   "Connection: close\r\n"                                                     \
   "\r\n"                                                                      \
   "Bad Request"
+#define H1_SRV "Server: Apache\r\n"
 
 uv_tcp_t server;
 
@@ -21,7 +22,6 @@ struct h1_client
   llhttp_t parser;
   llhttp_settings_t settings;
   bsto *body;
-  bsto *response;
 };
 
 static void
@@ -29,9 +29,8 @@ free_http (struct h1_client *client)
 {
   if (!client)
     return;
-  free (client->response);
   free (client->body);
-  client->body = client->response = null;
+  client->body = null;
 }
 
 static void
@@ -39,7 +38,6 @@ free_client (struct h1_client *client)
 {
   if (!client)
     return;
-  free (client->response);
   free (client->body);
   free (client);
 }
@@ -73,27 +71,38 @@ on_read_alloc (uv_handle_t *handle, size_t siz, uv_buf_t *buf)
   buf->len = siz;
 }
 
+void
+response (struct h1_client *client, char *header, usz length, byte *content)
+{
+  usz siz = strlen (header);
+  usz tot = sizeof (H1) + siz + sizeof (H1_SRV) + length + 128;
+  client->write_buffer.len = tot;
+  char *res = client->write_buffer.base = malloc$ (tot);
+  memcpy (res, H1, sizeof (H1) - 1);
+  res += sizeof (H1) - 1;
+  *res++ = ' ';
+  memcpy (res, header, siz);
+  res += siz;
+  memcpy (res, H1_SRV, sizeof (H1_SRV) - 1);
+  res += sizeof (H1_SRV) - 1;
+  char cl[] = "Content-Length: ";
+  /* memcpy (res, "Content-Length: "); */
+}
+
 static void
 handle_http_request (struct h1_client *client)
 {
   int keep_alive = llhttp_should_keep_alive (&client->parser);
 
-  /* todo$ (); */
-
   if (keep_alive)
     {
       llhttp_init (&client->parser, HTTP_BOTH, &client->settings);
+      client->parser.data = client;
       free_http (client);
       return;
     }
   uv_close ((uv_handle_t *)client, (uv_close_cb)free_client);
 }
-
-/* static int */
-/* on_headers_complete (llhttp_t *parser) */
-/* { */
-/*   return HPE_OK; */
-/* } */
 
 static int
 on_body (llhttp_t *parser, char const *at, usz len)
@@ -125,7 +134,6 @@ on_connection (uv_stream_t *srv, int status)
   if (uv_accept (srv, (uv_stream_t *)client) < 0)
     return uv_close ((uv_handle_t *)client, (uv_close_cb)free);
   llhttp_settings_init (&client->settings);
-  /* client->settings.on_headers_complete = on_headers_complete; */
   client->settings.on_body = on_body;
   client->settings.on_message_complete = on_message_complete;
   llhttp_init (&client->parser, HTTP_BOTH, &client->settings);
