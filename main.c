@@ -76,11 +76,10 @@ void
 response (struct h1_client *client, char *header, byte *content, usz length)
 {
   usz hsiz = strlen (header);
-  usz tot = sizeof (H1) + hsiz + sizeof (H1_SERVER)
-            + sizeof (H1_CONTENT_LENGTH) + sizeof (quote$ (SIZE_MAX)) * 1
-            + length + 64;
-  client->write_buffer.len = tot;
-  char *ptr = client->write_buffer.base = malloc$ (tot);
+  usz bufsiz = sizeof (H1) + hsiz + sizeof (H1_SERVER)
+               + sizeof (H1_CONTENT_LENGTH) + sizeof (quote$ (SIZE_MAX)) * 1
+               + length + 64;
+  char *ptr = client->write_buffer.base = malloc$ (bufsiz);
   memcpy (ptr, H1, sizeof (H1) - 1);
   ptr += sizeof (H1) - 1;
   *ptr++ = ' ';
@@ -93,13 +92,14 @@ response (struct h1_client *client, char *header, byte *content, usz length)
   ptr += sizeof (H1_EOL) - 1;
   memcpy (ptr, content, length);
   ptr += length;
+  client->write_buffer.len = ptr - client->write_buffer.base;
 }
 
 static void
 handle_http_request (struct h1_client *client)
 {
   int keep_alive = llhttp_should_keep_alive (&client->parser);
-
+  /* response (client, ); */
   if (keep_alive)
     {
       llhttp_init (&client->parser, HTTP_BOTH, &client->settings);
