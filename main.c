@@ -4,14 +4,18 @@
 
 #define H1 "HTTP/1.1"
 #define H1_EOL "\r\n"
+#define H1_CODE_200 "200 OK"
+#define H1_CODE_400 "400 Bad Request"
+#define H1_CODE_431 "431 Request Header Fields Too Large"
 #define H1_400                                                                \
-  "HTTP/1.1 400 Bad Request\r\n"                                              \
+  "HTTP/1.1 " H1_CODE_400 "\r\n"                                              \
   "Content-Length: 11\r\n"                                                    \
   "Connection: close\r\n"                                                     \
   "\r\n"                                                                      \
   "Bad Request"
 #define H1_SERVER "Server: Apache\r\n"
 #define H1_CONTENT_LENGTH "Content-Length: %zu\r\n"
+#define H1_CONNECTION "Connection: %s\r\n"
 
 uv_tcp_t server;
 
@@ -78,7 +82,7 @@ response (struct h1_client *client, char *header, byte *content, usz length)
   usz hsiz = strlen (header);
   usz bufsiz = sizeof (H1) + hsiz + sizeof (H1_SERVER)
                + sizeof (H1_CONTENT_LENGTH) + sizeof (quote$ (SIZE_MAX)) * 1
-               + length + 64;
+               + sizeof (H1_EOL) + length;
   char *ptr = client->write_buffer.base = malloc$ (bufsiz);
   memcpy (ptr, H1, sizeof (H1) - 1);
   ptr += sizeof (H1) - 1;
@@ -99,7 +103,13 @@ static void
 handle_http_request (struct h1_client *client)
 {
   int keep_alive = llhttp_should_keep_alive (&client->parser);
-  /* response (client, ); */
+  char header[sizeof (H1_CODE_431 H1_EOL) + sizeof (H1_CONNECTION)
+              + umax$ (sizeof ("keep-alive"), sizeof ("close"))
+              + sizeof (H1_EOL)] = H1_CODE_200 H1_EOL H1_CONNECTION;
+  strcat (header,
+          (char *[]){ "close" H1_EOL, "keep-alive" H1_EOL }[keep_alive]);
+  bsto *body = client->body;
+  response (client, H1_CODE_200 H1_EOL, body->store, body->size);
   if (keep_alive)
     {
       llhttp_init (&client->parser, HTTP_BOTH, &client->settings);
