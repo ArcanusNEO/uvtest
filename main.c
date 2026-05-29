@@ -83,20 +83,27 @@ response (struct h1_client *client, char *header, byte *content, usz length)
   usz bufsiz = sizeof (H1) + hsiz + sizeof (H1_SERVER)
                + sizeof (H1_CONTENT_LENGTH) + sizeof (quote$ (SIZE_MAX)) * 1
                + sizeof (H1_EOL) + length;
-  char *ptr = client->write_buffer.base = malloc$ (bufsiz);
-  memcpy (ptr, H1, sizeof (H1) - 1);
-  ptr += sizeof (H1) - 1;
-  *ptr++ = ' ';
-  memcpy (ptr, header, hsiz);
-  ptr += hsiz;
-  memcpy (ptr, H1_SERVER, sizeof (H1_SERVER) - 1);
-  ptr += sizeof (H1_SERVER) - 1;
-  ptr += sprintf (ptr, H1_CONTENT_LENGTH, length);
-  memcpy (ptr, H1_EOL, sizeof (H1_EOL) - 1);
-  ptr += sizeof (H1_EOL) - 1;
-  memcpy (ptr, content, length);
-  ptr += length;
-  client->write_buffer.len = ptr - client->write_buffer.base;
+  char *cur = client->write_buffer.base = malloc$ (bufsiz);
+  cerr (cur - client->write_buffer.base);
+  memcpy (cur, H1, sizeof (H1) - 1);
+  cur += sizeof (H1) - 1;
+  *cur++ = ' ';
+  cerr (cur - client->write_buffer.base);
+  memcpy (cur, header, hsiz);
+  cur += hsiz;
+  cerr (cur - client->write_buffer.base);
+  memcpy (cur, H1_SERVER, sizeof (H1_SERVER) - 1);
+  cur += sizeof (H1_SERVER) - 1;
+  cerr (cur - client->write_buffer.base);
+  cur += sprintf (cur, H1_CONTENT_LENGTH, length);
+  cerr (cur - client->write_buffer.base);
+  memcpy (cur, H1_EOL, sizeof (H1_EOL) - 1);
+  cur += sizeof (H1_EOL) - 1;
+  cerr (cur - client->write_buffer.base);
+  memcpy (cur, content, length);
+  cur += length;
+  cerr (cur - client->write_buffer.base);
+  client->write_buffer.len = cur - client->write_buffer.base;
 }
 
 static void
@@ -107,9 +114,9 @@ handle_http_request (struct h1_client *client)
               + umax$ (sizeof ("keep-alive"), sizeof ("close"))
               + sizeof (H1_EOL)] = H1_CODE_200 H1_EOL H1_CONNECTION;
   strcat (header,
-          (char *[]){ "close" H1_EOL, "keep-alive" H1_EOL }[keep_alive]);
+          (char *[]){ "close" H1_EOL, "keep-alive" H1_EOL }[!!keep_alive]);
   bsto *body = client->body;
-  response (client, H1_CODE_200 H1_EOL, body->store, body->size);
+  response (client, header, body->store, body->size);
   if (keep_alive)
     {
       llhttp_init (&client->parser, HTTP_BOTH, &client->settings);
