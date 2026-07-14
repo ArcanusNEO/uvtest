@@ -79,17 +79,14 @@ void
 response (struct h1_client *client, char *header, byte *content, usz length)
 {
   usz hsiz = strlen (header);
-  usz bufsiz = sizeof (H1) + hsiz + sizeof (H1_SERVER)
-               + sizeof (H1_CONTENT_LENGTH) + sizeof (quote$ (SIZE_MAX)) * 1
-               + sizeof (H1_EOL) + length;
+  usz bufsiz = sizeof (H1) + hsiz + sizeof (H1_CONTENT_LENGTH)
+               + sizeof (quote$ (SIZE_MAX)) * 1 + sizeof (H1_EOL) + length;
   char *cur = client->write_buffer.base = malloc$ (bufsiz);
   memcpy (cur, H1, sizeof (H1) - 1);
   cur += sizeof (H1) - 1;
   *cur++ = ' ';
   memcpy (cur, header, hsiz);
   cur += hsiz;
-  memcpy (cur, H1_SERVER, sizeof (H1_SERVER) - 1);
-  cur += sizeof (H1_SERVER) - 1;
   cur += sprintf (cur, H1_CONTENT_LENGTH, length);
   memcpy (cur, H1_EOL, sizeof (H1_EOL) - 1);
   cur += sizeof (H1_EOL) - 1;
