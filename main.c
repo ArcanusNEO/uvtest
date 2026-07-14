@@ -84,39 +84,33 @@ response (struct h1_client *client, char *header, byte *content, usz length)
                + sizeof (H1_CONTENT_LENGTH) + sizeof (quote$ (SIZE_MAX)) * 1
                + sizeof (H1_EOL) + length;
   char *cur = client->write_buffer.base = malloc$ (bufsiz);
-  cerr (cur - client->write_buffer.base);
   memcpy (cur, H1, sizeof (H1) - 1);
   cur += sizeof (H1) - 1;
   *cur++ = ' ';
-  cerr (cur - client->write_buffer.base);
   memcpy (cur, header, hsiz);
   cur += hsiz;
-  cerr (cur - client->write_buffer.base);
   memcpy (cur, H1_SERVER, sizeof (H1_SERVER) - 1);
   cur += sizeof (H1_SERVER) - 1;
-  cerr (cur - client->write_buffer.base);
   cur += sprintf (cur, H1_CONTENT_LENGTH, length);
-  cerr (cur - client->write_buffer.base);
   memcpy (cur, H1_EOL, sizeof (H1_EOL) - 1);
   cur += sizeof (H1_EOL) - 1;
-  cerr (cur - client->write_buffer.base);
   memcpy (cur, content, length);
   cur += length;
-  cerr (cur - client->write_buffer.base);
   client->write_buffer.len = cur - client->write_buffer.base;
+  uv_write (&client->write_request, (uv_stream_t *)client,
+            &client->write_buffer, 1, null);
 }
 
 static void
 handle_http_request (struct h1_client *client)
 {
-  int keep_alive = llhttp_should_keep_alive (&client->parser);
-  char header[sizeof (H1_CODE_431 H1_EOL) + sizeof (H1_CONNECTION)
-              + umax$ (sizeof ("keep-alive"), sizeof ("close"))
-              + sizeof (H1_EOL)] = H1_CODE_200 H1_EOL H1_CONNECTION;
+  int keep_alive = !!llhttp_should_keep_alive (&client->parser);
+  char header[128] = H1_CODE_200 H1_EOL "Connection: ";
   strcat (header,
-          (char *[]){ "close" H1_EOL, "keep-alive" H1_EOL }[!!keep_alive]);
+          ((char *[]){ "close" H1_EOL, "keep-alive" H1_EOL })[keep_alive]);
   bsto *body = client->body;
-  response (client, header, body->store, body->size);
+  response (client, header, body ? body->store : (byte *)"",
+            body ? body->size : 0);
   if (keep_alive)
     {
       llhttp_init (&client->parser, HTTP_BOTH, &client->settings);
@@ -131,7 +125,7 @@ static int
 on_body (llhttp_t *parser, char const *at, usz len)
 {
   struct h1_client *client = parser->data;
-  usz siz = client->body->size;
+  usz siz = client->body ? client->body->size : 0;
   client->body = rebin$ (client->body, siz + len);
   clogger (ASSERT, client->body->size == siz + len);
   memcpy (client->body->store + siz, at, len);
@@ -151,7 +145,7 @@ on_connection (uv_stream_t *srv, int status)
 {
   if (status < 0)
     return;
-  struct h1_client *client = calloc$ (sizeof (client));
+  struct h1_client *client = calloc$ (sizeof (*client));
   uv_tcp_init (srv->loop, &client->tcp_handle);
   client->tcp_handle.data = client;
   if (uv_accept (srv, (uv_stream_t *)client) < 0)
