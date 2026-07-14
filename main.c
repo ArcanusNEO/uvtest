@@ -105,7 +105,7 @@ static void
 handle_http_request (struct h1_client *client)
 {
   int keep_alive = !!llhttp_should_keep_alive (&client->parser);
-  char header[128] = H1_CODE_200 H1_EOL "Connection: ";
+  char header[64] = H1_CODE_200 H1_EOL "Connection: ";
   strcat (header,
           ((char *[]){ "close" H1_EOL, "keep-alive" H1_EOL })[keep_alive]);
   bsto *body = client->body;
