@@ -15,7 +15,6 @@
   "Bad Request"
 #define H1_SERVER "Server: Apache\r\n"
 #define H1_CONTENT_LENGTH "Content-Length: %zu\r\n"
-#define H1_CONNECTION "Connection: %s\r\n"
 
 uv_tcp_t server;
 
