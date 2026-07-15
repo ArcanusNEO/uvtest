@@ -173,7 +173,9 @@ on_connection (uv_stream_t *srv, int status)
 {
   if (status < 0)
     return;
-  struct http_client *client = calloc$ (sizeof (*client));
+  struct http_client *client = calloc (1, sizeof (*client));
+  if (!client)
+    return uv_close ((uv_handle_t *)srv, null);
   client->response_queue.next = client->response_queue.prev
       = &client->response_queue;
   uv_tcp_init (srv->loop, &client->tcp_handle);
