@@ -1,9 +1,9 @@
 #include "http.h"
-static char H1_400[] = "HTTP/1.1 " H1_CODE_400 "\r\n"
-                       "Connection: close\r\n"
-                       "Content-Length: 11\r\n"
-                       "\r\n"
-                       "Bad Request";
+static char *H1_400 = "HTTP/1.1 " H1_CODE_400 "\r\n"
+                      "Connection: close\r\n"
+                      "Content-Length: 11\r\n"
+                      "\r\n"
+                      "Bad Request";
 
 static void
 free_client (struct http_client *client)
@@ -90,9 +90,9 @@ on_read (uv_stream_t *stream, ssize_t nread, uv_buf_t const *buf)
     {
       uv_read_stop (stream);
       struct http_response *response = malloc$ (sizeof (*response));
-      response->write_buffer.base = H1_400;
-      response->write_buffer.len = sizeof (H1_400) - 1;
       response->keep_alive = false;
+      response->write_buffer.base = H1_400;
+      response->write_buffer.len = strlen (H1_400);
       enqueue_response (client, response);
     }
   free (buf->base);
@@ -135,9 +135,9 @@ http_response (struct http_client *client, char *header, byte *content,
   else
     {
       uv_read_stop ((uv_stream_t *)client);
-      r->write_buffer.base = H1_400;
-      r->write_buffer.len = sizeof (H1_400) - 1;
       r->keep_alive = false;
+      r->write_buffer.base = H1_400;
+      r->write_buffer.len = strlen (H1_400);
     }
   free (client->body);
   client->body = null;
