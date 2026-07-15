@@ -191,7 +191,7 @@ on_connection (uv_stream_t *srv, int status)
     }
   uv_tcp_init (srv->loop, &client->tcp_handle);
   if (uv_accept (srv, (uv_stream_t *)client) < 0)
-    return uv_close ((uv_handle_t *)client, null);
+    return uv_close ((uv_handle_t *)client, (uv_close_cb)free);
   llhttp_init (&client->parser, HTTP_BOTH, &llhttp_settings);
   client->response_queue.next = client->response_queue.prev
       = &client->response_queue;
