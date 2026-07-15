@@ -164,7 +164,9 @@ on_read (uv_stream_t *stream, ssize_t nread, uv_buf_t const *buf)
 static void
 on_read_alloc (uv_handle_t *handle, size_t siz, uv_buf_t *buf)
 {
-  buf->base = malloc$ (siz);
+  buf->base = null;
+  while (siz && !(buf->base = malloc (siz)))
+    siz /= 2;
   buf->len = siz;
 }
 
@@ -177,13 +179,18 @@ on_connection (uv_stream_t *srv, int status)
     return;
   struct http_client *client = calloc (1, sizeof (*client));
   if (!client)
-    return uv_close ((uv_handle_t *)srv, null);
-  client->response_queue.next = client->response_queue.prev
-      = &client->response_queue;
+    {
+      static struct http_client closer;
+      uv_tcp_init (srv->loop, &closer.tcp_handle);
+      uv_accept (srv, (uv_stream_t *)&closer);
+      uv_close ((uv_handle_t *)&closer, null);
+    }
   uv_tcp_init (srv->loop, &client->tcp_handle);
   if (uv_accept (srv, (uv_stream_t *)client) < 0)
-    return close_client (client);
+    return uv_close ((uv_handle_t *)client, null);
   llhttp_init (&client->parser, HTTP_BOTH, &llhttp_settings);
+  client->response_queue.next = client->response_queue.prev
+      = &client->response_queue;
   uv_read_start ((uv_stream_t *)client, on_read_alloc, on_read);
 }
 
