@@ -1,9 +1,11 @@
 #include "http.h"
+static llhttp_settings_t llhttp_settings;
 static char *H1_400 = "HTTP/1.1 " H1_CODE_400 "\r\n"
                       "Connection: close\r\n"
                       "Content-Length: 11\r\n"
                       "\r\n"
                       "Bad Request";
+static struct http_response http_response_400;
 
 static void
 free_http (struct http_client *client)
@@ -24,7 +26,8 @@ free_client (struct http_client *client)
       struct http_response *response = container_of (
           client->response_queue.next, struct http_response, list_entry);
       list$ (rem) (&response->list_entry);
-      free (response);
+      if (response != &http_response_400)
+        free (response);
     }
   free (client->body);
   free (client);
@@ -49,7 +52,8 @@ on_write (uv_write_t *request, int status)
   struct http_client *client = response->client;
   bool keep_alive = response->keep_alive;
   list$ (rem) (&response->list_entry);
-  free (response);
+  if (response != &http_response_400)
+    free (response);
   if (status || !keep_alive)
     close_client (client);
   else
@@ -152,11 +156,7 @@ on_read (uv_stream_t *stream, ssize_t nread, uv_buf_t const *buf)
   if (llhttp_execute (&client->parser, buf->base, nread) != HPE_OK)
     {
       uv_read_stop (stream);
-      struct http_response *response = malloc$ (sizeof (*response));
-      response->keep_alive = false;
-      response->write_buffer.base = H1_400;
-      response->write_buffer.len = strlen (H1_400);
-      enqueue_response (client, response);
+      enqueue_response (client, &http_response_400);
     }
   free (buf->base);
 }
@@ -169,8 +169,6 @@ on_read_alloc (uv_handle_t *handle, size_t siz, uv_buf_t *buf)
     siz /= 2;
   buf->len = siz;
 }
-
-static llhttp_settings_t llhttp_settings;
 
 static void
 on_connection (uv_stream_t *srv, int status)
@@ -194,13 +192,22 @@ on_connection (uv_stream_t *srv, int status)
   uv_read_start ((uv_stream_t *)client, on_read_alloc, on_read);
 }
 
+static void
+init_static ()
+{
+  llhttp_settings_init (&llhttp_settings);
+  llhttp_settings.on_body = on_body;
+  llhttp_settings.on_message_complete = on_message_complete;
+  http_response_400.keep_alive = false;
+  http_response_400.write_buffer.base = H1_400;
+  http_response_400.write_buffer.len = strlen (H1_400);
+}
+
 int
 http_listen (char const *host, unsigned short port)
 {
   signal (SIGPIPE, SIG_IGN);
-  llhttp_settings_init (&llhttp_settings);
-  llhttp_settings.on_body = on_body;
-  llhttp_settings.on_message_complete = on_message_complete;
+  init_static ();
   auto loop = uv_default_loop ();
   uv_tcp_t server;
   uv_tcp_init (loop, &server);
