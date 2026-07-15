@@ -1,33 +1,78 @@
 #include "http.h"
-
-uv_tcp_t server;
+static char H1_400[] = "HTTP/1.1 " H1_CODE_400 "\r\n"
+                       "Connection: close\r\n"
+                       "Content-Length: 11\r\n"
+                       "\r\n"
+                       "Bad Request";
 
 static void
-free_http (struct h1_client *client)
+free_client (struct http_client *client)
 {
   if (!client)
     return;
-  free (client->body);
-  client->body = null;
-}
-
-static void
-free_client (struct h1_client *client)
-{
-  if (!client)
-    return;
+  while (client->response_queue.next != &client->response_queue)
+    {
+      struct http_response *response = container_of (
+          client->response_queue.next, struct http_response, list_entry);
+      list$ (rem) (&response->list_entry);
+      if (response->write_buffer.base != H1_400)
+        free (response->write_buffer.base);
+      free (response);
+    }
   free (client->body);
   free (client);
 }
 
 static void
+close_client (struct http_client *client)
+{
+  if (client->closing)
+    return;
+  client->closing = true;
+  uv_close ((uv_handle_t *)client, (uv_close_cb)free_client);
+}
+
+static void write_next (struct http_client *client);
+
+static void
 on_write (uv_write_t *request, int status)
 {
-  struct h1_client *client
-      = container_of (request, struct h1_client, write_request);
-  free (client->write_buffer.base);
-  if (status || !client->keep_alive)
-    uv_close ((uv_handle_t *)client, (uv_close_cb)free_client);
+  struct http_response *response
+      = container_of (request, struct http_response, write_request);
+  struct http_client *client = response->client;
+  bool keep_alive = response->keep_alive;
+  list$ (rem) (&response->list_entry);
+  if (response->write_buffer.base != &(H1_400)[0])
+    free (response->write_buffer.base);
+  free (response);
+  if (status || !keep_alive)
+    close_client (client);
+  else
+    write_next (client);
+}
+
+static void
+write_next (struct http_client *client)
+{
+  if (client->response_queue.next == &client->response_queue)
+    return;
+  struct http_response *response = container_of (
+      client->response_queue.next, struct http_response, list_entry);
+  int wr = uv_write (&response->write_request, (uv_stream_t *)client,
+                     &response->write_buffer, 1, on_write);
+  if (wr)
+    on_write (&response->write_request, -wr);
+}
+
+static void
+enqueue_response (struct http_client *client, struct http_response *response)
+{
+  response->client = client;
+  bool idle = client->response_queue.next == &client->response_queue;
+  list$ (ins) (&response->list_entry, client->response_queue.prev,
+               &client->response_queue);
+  if (idle)
+    write_next (client);
 }
 
 static void
@@ -37,19 +82,18 @@ on_read (uv_stream_t *stream, ssize_t nread, uv_buf_t const *buf)
     {
       free (buf->base);
       if (nread < 0)
-        uv_close ((uv_handle_t *)stream, (uv_close_cb)free_client);
+        close_client ((struct http_client *)stream);
       return;
     }
-  auto client = (struct h1_client *)stream;
+  auto client = (struct http_client *)stream;
   if (llhttp_execute (&client->parser, buf->base, nread) != HPE_OK)
     {
       uv_read_stop (stream);
-      client->write_buffer.base = strdup (H1_400);
-      client->write_buffer.len = sizeof (H1_400) - 1;
-      int wr = uv_write (&client->write_request, stream, &client->write_buffer,
-                         1, on_write);
-      if (wr)
-        on_write (&client->write_request, -wr);
+      struct http_response *response = malloc$ (sizeof (*response));
+      response->write_buffer.base = H1_400;
+      response->write_buffer.len = sizeof (H1_400) - 1;
+      response->keep_alive = false;
+      enqueue_response (client, response);
     }
   free (buf->base);
 }
@@ -61,46 +105,51 @@ on_read_alloc (uv_handle_t *handle, size_t siz, uv_buf_t *buf)
   buf->len = siz;
 }
 
-int
-response (struct h1_client *client, char *header, byte *content, usz length)
+static void
+http_response (struct http_client *client, char *header, byte *content,
+               usz length)
 {
-  int keep_alive = client->keep_alive
-      = llhttp_should_keep_alive (&client->parser);
+  struct http_response *r = malloc$ (sizeof (*r));
   usz hsiz = strlen (header);
   usz bufsiz = sizeof (H1) + hsiz + sizeof (H1_CONNECTION)
                + sizeof ("keep-alive") + sizeof (H1_CONTENT_LENGTH)
                + sizeof (quote$ (SIZE_MAX)) + sizeof (H1_EOL) + length;
-  char *cur = client->write_buffer.base = malloc$ (bufsiz);
-  memcpy (cur, H1, sizeof (H1) - 1);
-  cur += sizeof (H1) - 1;
-  *cur++ = ' ';
-  memcpy (cur, header, hsiz);
-  cur += hsiz;
-  cur += sprintf (cur, H1_CONNECTION, keep_alive ? "keep-alive" : "close");
-  cur += sprintf (cur, H1_CONTENT_LENGTH, length);
-  memcpy (cur, H1_EOL, sizeof (H1_EOL) - 1);
-  cur += sizeof (H1_EOL) - 1;
-  memcpy (cur, content, length);
-  cur += length;
-  client->write_buffer.len = cur - client->write_buffer.base;
-  int wr = uv_write (&client->write_request, (uv_stream_t *)client,
-                     &client->write_buffer, 1, on_write);
-  if (wr)
+  char *cur = r->write_buffer.base = malloc (bufsiz);
+  if (cur)
     {
-      on_write (&client->write_request, -wr);
-      return 0;
+      r->keep_alive = llhttp_should_keep_alive (&client->parser);
+      memcpy (cur, H1, sizeof (H1) - 1);
+      cur += sizeof (H1) - 1;
+      *cur++ = ' ';
+      memcpy (cur, header, hsiz);
+      cur += hsiz;
+      cur += sprintf (cur, H1_CONNECTION,
+                      r->keep_alive ? "keep-alive" : "close");
+      cur += sprintf (cur, H1_CONTENT_LENGTH, length);
+      memcpy (cur, H1_EOL, sizeof (H1_EOL) - 1);
+      cur += sizeof (H1_EOL) - 1;
+      memcpy (cur, content, length);
+      cur += length;
+      r->write_buffer.len = cur - r->write_buffer.base;
     }
-  return keep_alive;
+  else
+    {
+      r->write_buffer.base = H1_400;
+      r->write_buffer.len = sizeof (H1_400) - 1;
+      r->keep_alive = false;
+    }
+  free (client->body);
+  client->body = null;
+  enqueue_response (client, r);
 }
 
 static void
-handle_http_request (struct h1_client *client)
+handle_http_request (struct http_client *client)
 {
   bsto *body = client->body ? client->body : &(bsto){ 0 };
   char header[] = H1_CODE_200 H1_EOL;
 
-  if (response (client, header, body->store, body->size))
-    free_http (client);
+  http_response (client, header, body->store, body->size);
 }
 
 static int
@@ -108,14 +157,12 @@ on_body (llhttp_t *parser, char const *at, usz len)
 {
   if (len == 0)
     return HPE_OK;
-  struct h1_client *client = container_of (parser, struct h1_client, parser);
+  struct http_client *client
+      = container_of (parser, struct http_client, parser);
   usz siz = client->body ? client->body->size : 0;
   client->body = rebin$ (client->body, siz + len);
   if (!client->body || client->body->size != siz + len)
-    {
-      // TODO
-      return HPE_USER;
-    }
+    return HPE_USER;
   memcpy (client->body->store + siz, at, len);
   return HPE_OK;
 }
@@ -123,7 +170,8 @@ on_body (llhttp_t *parser, char const *at, usz len)
 static int
 on_message_complete (llhttp_t *parser)
 {
-  struct h1_client *client = container_of (parser, struct h1_client, parser);
+  struct http_client *client
+      = container_of (parser, struct http_client, parser);
   handle_http_request (client);
   return HPE_OK;
 }
@@ -133,10 +181,12 @@ on_connection (uv_stream_t *srv, int status)
 {
   if (status < 0)
     return;
-  struct h1_client *client = calloc$ (sizeof (*client));
+  struct http_client *client = calloc$ (sizeof (*client));
+  client->response_queue.next = client->response_queue.prev
+      = &client->response_queue;
   uv_tcp_init (srv->loop, &client->tcp_handle);
   if (uv_accept (srv, (uv_stream_t *)client) < 0)
-    return uv_close ((uv_handle_t *)client, (uv_close_cb)free);
+    return close_client (client);
   llhttp_settings_init (&client->settings);
   client->settings.on_body = on_body;
   client->settings.on_message_complete = on_message_complete;
@@ -149,6 +199,7 @@ http_listen (char const *host, unsigned short port)
 {
   signal (SIGPIPE, SIG_IGN);
   auto loop = uv_default_loop ();
+  uv_tcp_t server;
   uv_tcp_init (loop, &server);
   struct sockaddr_in addr;
   uv_ip4_addr (host, port, &addr);

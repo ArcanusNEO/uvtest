@@ -8,7 +8,6 @@
 
 #define H1 "HTTP/1.1"
 #define H1_EOL "\r\n"
-
 #define H1_CODE_100 "100 Continue"
 #define H1_CODE_101 "101 Switching Protocols"
 #define H1_CODE_102 "102 Processing"
@@ -70,32 +69,28 @@
 #define H1_CODE_507 "507 Insufficient Storage"
 #define H1_CODE_508 "508 Loop Detected"
 #define H1_CODE_510 "510 Not Extended"
-
-#define H1_400                                                                \
-  "HTTP/1.1 " H1_CODE_400 "\r\n"                                              \
-  "Connection: close\r\n"                                                     \
-  "Content-Length: 11\r\n"                                                    \
-  "\r\n"                                                                      \
-  "Bad Request"
 #define H1_SERVER "Server: %s\r\n"
 #define H1_CONNECTION "Connection: %s\r\n"
 #define H1_CONTENT_LENGTH "Content-Length: %zu\r\n"
 
-#ifndef H1_CLIENT
-#define H1_CLIENT
-struct h1_client
+struct http_client
 {
   uv_tcp_t tcp_handle;
-  uv_write_t write_request;
-  uv_buf_t write_buffer;
   llhttp_t parser;
   llhttp_settings_t settings;
-  int keep_alive;
+  struct lsnod response_queue;
   bsto *body;
+  bool closing : 1;
 };
-#endif
 
-extern uv_tcp_t server;
+struct http_response
+{
+  struct http_client *client;
+  struct lsnod list_entry;
+  uv_write_t write_request;
+  uv_buf_t write_buffer;
+  bool keep_alive : 1;
+};
 
 int http_listen (char const *host, unsigned short port);
 
