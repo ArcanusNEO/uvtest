@@ -9,11 +9,12 @@
 #define H1_CODE_431 "431 Request Header Fields Too Large"
 #define H1_400                                                                \
   "HTTP/1.1 " H1_CODE_400 "\r\n"                                              \
-  "Content-Length: 11\r\n"                                                    \
   "Connection: close\r\n"                                                     \
+  "Content-Length: 11\r\n"                                                    \
   "\r\n"                                                                      \
   "Bad Request"
-#define H1_SERVER "Server: Apache\r\n"
+#define H1_SERVER "Server: %s\r\n"
+#define H1_CONNECTION "Connection: %s\r\n"
 #define H1_CONTENT_LENGTH "Content-Length: %zu\r\n"
 
 uv_tcp_t server;
@@ -75,18 +76,21 @@ on_read_alloc (uv_handle_t *handle, size_t siz, uv_buf_t *buf)
   buf->len = siz;
 }
 
-void
+int
 response (struct h1_client *client, char *header, byte *content, usz length)
 {
+  int keep_alive = !!llhttp_should_keep_alive (&client->parser);
   usz hsiz = strlen (header);
-  usz bufsiz = sizeof (H1) + hsiz + sizeof (H1_CONTENT_LENGTH)
-               + sizeof (quote$ (SIZE_MAX)) * 1 + sizeof (H1_EOL) + length;
+  usz bufsiz = sizeof (H1) + hsiz + sizeof (H1_CONNECTION)
+               + sizeof ("keep-alive") + sizeof (H1_CONTENT_LENGTH)
+               + sizeof (quote$ (SIZE_MAX)) + sizeof (H1_EOL) + length;
   char *cur = client->write_buffer.base = malloc$ (bufsiz);
   memcpy (cur, H1, sizeof (H1) - 1);
   cur += sizeof (H1) - 1;
   *cur++ = ' ';
   memcpy (cur, header, hsiz);
   cur += hsiz;
+  cur += sprintf (cur, H1_CONNECTION, keep_alive ? "keep-alive" : "close");
   cur += sprintf (cur, H1_CONTENT_LENGTH, length);
   memcpy (cur, H1_EOL, sizeof (H1_EOL) - 1);
   cur += sizeof (H1_EOL) - 1;
@@ -95,19 +99,16 @@ response (struct h1_client *client, char *header, byte *content, usz length)
   client->write_buffer.len = cur - client->write_buffer.base;
   uv_write (&client->write_request, (uv_stream_t *)client,
             &client->write_buffer, 1, null);
+  return keep_alive;
 }
 
 static void
 handle_http_request (struct h1_client *client)
 {
-  int keep_alive = !!llhttp_should_keep_alive (&client->parser);
-  char header[64] = H1_CODE_200 H1_EOL "Connection: ";
-  strcat (header,
-          ((char *[]){ "close" H1_EOL, "keep-alive" H1_EOL })[keep_alive]);
-  bsto *body = client->body;
-  response (client, header, body ? body->store : (byte *)"",
-            body ? body->size : 0);
-  if (keep_alive)
+  auto body = client->body ? client->body : &(bsto){ 0 };
+  char header[] = H1_CODE_200 H1_EOL;
+
+  if (response (client, header, body->store, body->size))
     {
       llhttp_init (&client->parser, HTTP_BOTH, &client->settings);
       client->parser.data = client;
