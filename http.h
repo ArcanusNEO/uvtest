@@ -77,7 +77,6 @@ struct http_client
 {
   uv_tcp_t tcp_handle;
   llhttp_t parser;
-  llhttp_settings_t settings;
   struct lsnod response_queue;
   bsto *body;
   bool closing : 1;

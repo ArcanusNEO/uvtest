@@ -168,6 +168,8 @@ on_read_alloc (uv_handle_t *handle, size_t siz, uv_buf_t *buf)
   buf->len = siz;
 }
 
+static llhttp_settings_t llhttp_settings;
+
 static void
 on_connection (uv_stream_t *srv, int status)
 {
@@ -181,10 +183,7 @@ on_connection (uv_stream_t *srv, int status)
   uv_tcp_init (srv->loop, &client->tcp_handle);
   if (uv_accept (srv, (uv_stream_t *)client) < 0)
     return close_client (client);
-  llhttp_settings_init (&client->settings);
-  client->settings.on_body = on_body;
-  client->settings.on_message_complete = on_message_complete;
-  llhttp_init (&client->parser, HTTP_BOTH, &client->settings);
+  llhttp_init (&client->parser, HTTP_BOTH, &llhttp_settings);
   uv_read_start ((uv_stream_t *)client, on_read_alloc, on_read);
 }
 
@@ -192,6 +191,9 @@ int
 http_listen (char const *host, unsigned short port)
 {
   signal (SIGPIPE, SIG_IGN);
+  llhttp_settings_init (&llhttp_settings);
+  llhttp_settings.on_body = on_body;
+  llhttp_settings.on_message_complete = on_message_complete;
   auto loop = uv_default_loop ();
   uv_tcp_t server;
   uv_tcp_init (loop, &server);
