@@ -42,7 +42,7 @@ on_write (uv_write_t *request, int status)
   struct http_client *client = response->client;
   bool keep_alive = response->keep_alive;
   list$ (rem) (&response->list_entry);
-  if (response->write_buffer.base != &(H1_400)[0])
+  if (response->write_buffer.base != H1_400)
     free (response->write_buffer.base);
   free (response);
   if (status || !keep_alive)
@@ -134,6 +134,7 @@ http_response (struct http_client *client, char *header, byte *content,
     }
   else
     {
+      uv_read_stop ((uv_stream_t *)client);
       r->write_buffer.base = H1_400;
       r->write_buffer.len = sizeof (H1_400) - 1;
       r->keep_alive = false;
