@@ -14,7 +14,7 @@ LDLIBS += -lm -lpthread -luv -lllhttp -lcaster
 
 all: main
 
-main: main.o
+main: $(OBJ)
 	$(LINK.o) $^ $(LOADLIBES) $(LDLIBS) -o $@
 
 %.o: %.c
@@ -30,11 +30,11 @@ clean:
 cmacs.h:
 	$(WGET) -O $@ https://raw.github.com/ArcanusNEO/cmacs/master/cmacs.h
 
-extern: extern/yyjson.h
-	@install -d extern
-extern/yyjson.h:
-	@install -d extern
-	$(WGET) -O extern/yyjson.c https://raw.github.com/ibireme/yyjson/master/src/yyjson.c
-	$(WGET) -O $@ https://raw.github.com/ibireme/yyjson/master/src/yyjson.h
+# extern: extern/yyjson.h
+# 	@install -d extern
+# extern/yyjson.h:
+# 	@install -d extern
+# 	$(WGET) -O extern/yyjson.c https://raw.github.com/ibireme/yyjson/master/src/yyjson.c
+# 	$(WGET) -O $@ https://raw.github.com/ibireme/yyjson/master/src/yyjson.h
 
 .SECONDARY: $(OBJ)

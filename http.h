@@ -1,3 +1,7 @@
+#pragma once
+#ifndef HTTP_H
+#define HTTP_H
+
 #include <grimoire.h>
 #include <uv.h>
 #include <llhttp.h>
@@ -89,3 +93,9 @@ struct h1_client
   bsto *body;
 };
 #endif
+
+extern uv_tcp_t server;
+
+int http_listen (char const *host, unsigned short port);
+
+#endif /* HTTP_H */
