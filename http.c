@@ -26,6 +26,8 @@ on_write (uv_write_t *request, int status)
   struct h1_client *client
       = container_of (request, struct h1_client, write_request);
   free (client->write_buffer.base);
+  if (status || !client->keep_alive)
+    uv_close ((uv_handle_t *)client, (uv_close_cb)free_client);
 }
 
 static void
@@ -41,11 +43,13 @@ on_read (uv_stream_t *stream, ssize_t nread, uv_buf_t const *buf)
   auto client = (struct h1_client *)stream;
   if (llhttp_execute (&client->parser, buf->base, nread) != HPE_OK)
     {
-      client->write_buffer.base = H1_400;
+      uv_read_stop (stream);
+      client->write_buffer.base = strdup (H1_400);
       client->write_buffer.len = sizeof (H1_400) - 1;
-      uv_write (&client->write_request, stream, &client->write_buffer, 1,
-                on_write);
-      uv_close ((uv_handle_t *)stream, (uv_close_cb)free_client);
+      int wr = uv_write (&client->write_request, stream, &client->write_buffer,
+                         1, on_write);
+      if (wr)
+        on_write (&client->write_request, -wr);
     }
   free (buf->base);
 }
@@ -60,7 +64,8 @@ on_read_alloc (uv_handle_t *handle, size_t siz, uv_buf_t *buf)
 int
 response (struct h1_client *client, char *header, byte *content, usz length)
 {
-  int keep_alive = !!llhttp_should_keep_alive (&client->parser);
+  int keep_alive = client->keep_alive
+      = llhttp_should_keep_alive (&client->parser);
   usz hsiz = strlen (header);
   usz bufsiz = sizeof (H1) + hsiz + sizeof (H1_CONNECTION)
                + sizeof ("keep-alive") + sizeof (H1_CONTENT_LENGTH)
@@ -81,7 +86,10 @@ response (struct h1_client *client, char *header, byte *content, usz length)
   int wr = uv_write (&client->write_request, (uv_stream_t *)client,
                      &client->write_buffer, 1, on_write);
   if (wr)
-    on_write (&client->write_request, -wr);
+    {
+      on_write (&client->write_request, -wr);
+      return 0;
+    }
   return keep_alive;
 }
 
@@ -95,18 +103,22 @@ handle_http_request (struct h1_client *client)
     {
       llhttp_init (&client->parser, HTTP_BOTH, &client->settings);
       free_http (client);
-      return;
     }
-  uv_close ((uv_handle_t *)client, (uv_close_cb)free_client);
 }
 
 static int
 on_body (llhttp_t *parser, char const *at, usz len)
 {
+  if (len == 0)
+    return HPE_OK;
   struct h1_client *client = container_of (parser, struct h1_client, parser);
   usz siz = client->body ? client->body->size : 0;
   client->body = rebin$ (client->body, siz + len);
-  clogger (ASSERT, client->body->size == siz + len);
+  if (!client->body || client->body->size != siz + len)
+    {
+      // TODO
+      return HPE_USER;
+    }
   memcpy (client->body->store + siz, at, len);
   return HPE_OK;
 }

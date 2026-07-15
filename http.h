@@ -90,6 +90,7 @@ struct h1_client
   uv_buf_t write_buffer;
   llhttp_t parser;
   llhttp_settings_t settings;
+  int keep_alive;
   bsto *body;
 };
 #endif
