@@ -1,6 +1,6 @@
+#include <grimoire.h>
 #include <uv.h>
 #include <llhttp.h>
-#include <grimoire.h>
 
 #define H1 "HTTP/1.1"
 #define H1_EOL "\r\n"
@@ -105,7 +105,7 @@ response (struct h1_client *client, char *header, byte *content, usz length)
 static void
 handle_http_request (struct h1_client *client)
 {
-  auto body = client->body ? client->body : &(bsto){ 0 };
+  bsto *body = client->body ? client->body : &(bsto){ 0 };
   char header[] = H1_CODE_200 H1_EOL;
 
   if (response (client, header, body->store, body->size))
