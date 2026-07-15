@@ -137,7 +137,7 @@ http_listen (char const *host, unsigned short port)
   struct sockaddr_in addr;
   uv_ip4_addr (host, port, &addr);
   uv_tcp_bind (&server, (struct sockaddr *)&addr, 0);
-  if (uv_listen ((uv_stream_t *)&server, 1024, on_connection) < 0)
+  if (uv_listen ((uv_stream_t *)&server, 16384, on_connection) < 0)
     return 1;
   return uv_run (loop, UV_RUN_DEFAULT);
 }
