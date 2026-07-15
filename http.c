@@ -5,7 +5,6 @@ static char *H1_400 = "HTTP/1.1 " H1_CODE_400 "\r\n"
                       "Content-Length: 11\r\n"
                       "\r\n"
                       "Bad Request";
-static struct http_response http_response_400;
 
 static void
 free_http (struct http_client *client)
@@ -26,8 +25,7 @@ free_client (struct http_client *client)
       struct http_response *response = container_of (
           client->response_queue.next, struct http_response, list_entry);
       list$ (rem) (&response->list_entry);
-      if (response != &http_response_400)
-        free (response);
+      free (response);
     }
   free (client->body);
   free (client);
@@ -52,8 +50,7 @@ on_write (uv_write_t *request, int status)
   struct http_client *client = response->client;
   bool keep_alive = response->keep_alive;
   list$ (rem) (&response->list_entry);
-  if (response != &http_response_400)
-    free (response);
+  free (response);
   if (status || !keep_alive)
     close_client (client);
   else
@@ -145,18 +142,27 @@ on_body (llhttp_t *parser, char const *at, usz len)
 static void
 on_read (uv_stream_t *stream, ssize_t nread, uv_buf_t const *buf)
 {
+  auto client = (struct http_client *)stream;
   if (nread <= 0)
     {
       free (buf->base);
       if (nread < 0)
-        close_client ((struct http_client *)stream);
+        close_client (client);
       return;
     }
-  auto client = (struct http_client *)stream;
   if (llhttp_execute (&client->parser, buf->base, nread) != HPE_OK)
     {
       uv_read_stop (stream);
-      enqueue_response (client, &http_response_400);
+      struct http_response *response = malloc (sizeof (*response));
+      if (response)
+        {
+          response->keep_alive = false;
+          response->write_buffer.base = H1_400;
+          response->write_buffer.len = strlen (H1_400);
+          enqueue_response (client, response);
+        }
+      else
+        close_client (client);
     }
   free (buf->base);
 }
@@ -198,9 +204,6 @@ init_static ()
   llhttp_settings_init (&llhttp_settings);
   llhttp_settings.on_body = on_body;
   llhttp_settings.on_message_complete = on_message_complete;
-  http_response_400.keep_alive = false;
-  http_response_400.write_buffer.base = H1_400;
-  http_response_400.write_buffer.len = strlen (H1_400);
 }
 
 int
