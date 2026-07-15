@@ -6,6 +6,15 @@ static char *H1_400 = "HTTP/1.1 " H1_CODE_400 "\r\n"
                       "Bad Request";
 
 static void
+free_http (struct http_client *client)
+{
+  if (!client)
+    return;
+  free (client->body);
+  client->body = null;
+}
+
+static void
 free_client (struct http_client *client)
 {
   if (!client)
@@ -15,8 +24,6 @@ free_client (struct http_client *client)
       struct http_response *response = container_of (
           client->response_queue.next, struct http_response, list_entry);
       list$ (rem) (&response->list_entry);
-      if (response->write_buffer.base != H1_400)
-        free (response->write_buffer.base);
       free (response);
     }
   free (client->body);
@@ -42,8 +49,6 @@ on_write (uv_write_t *request, int status)
   struct http_client *client = response->client;
   bool keep_alive = response->keep_alive;
   list$ (rem) (&response->list_entry);
-  if (response->write_buffer.base != H1_400)
-    free (response->write_buffer.base);
   free (response);
   if (status || !keep_alive)
     close_client (client);
@@ -75,6 +80,64 @@ enqueue_response (struct http_client *client, struct http_response *response)
     write_next (client);
 }
 
+static int
+http_response (struct http_client *client, char *header, byte *content,
+               usz length)
+{
+  usz hsiz = strlen (header);
+  usz bufsiz = sizeof (H1) + hsiz + sizeof (H1_CONNECTION)
+               + sizeof ("keep-alive") + sizeof (H1_CONTENT_LENGTH)
+               + sizeof (quote$ (SIZE_MAX)) + sizeof (H1_EOL) + length;
+  struct http_response *r = malloc (sizeof (*r) + bufsiz);
+  if (!r)
+    {
+      free_http (client);
+      return HPE_USER;
+    }
+  char *cur = r->write_buffer.base = r->buffer;
+  r->keep_alive = llhttp_should_keep_alive (&client->parser);
+  memcpy (cur, H1, sizeof (H1) - 1);
+  cur += sizeof (H1) - 1;
+  *cur++ = ' ';
+  memcpy (cur, header, hsiz);
+  cur += hsiz;
+  cur += sprintf (cur, H1_CONNECTION, r->keep_alive ? "keep-alive" : "close");
+  cur += sprintf (cur, H1_CONTENT_LENGTH, length);
+  memcpy (cur, H1_EOL, sizeof (H1_EOL) - 1);
+  cur += sizeof (H1_EOL) - 1;
+  memcpy (cur, content, length);
+  cur += length;
+  r->write_buffer.len = cur - r->write_buffer.base;
+  free_http (client);
+  enqueue_response (client, r);
+  return HPE_OK;
+}
+
+static int
+on_message_complete (llhttp_t *parser)
+{
+  struct http_client *client
+      = container_of (parser, struct http_client, parser);
+  bsto *body = client->body ? client->body : &(bsto){ 0 };
+  char header[] = H1_CODE_200 H1_EOL;
+  return http_response (client, header, body->store, body->size);
+}
+
+static int
+on_body (llhttp_t *parser, char const *at, usz len)
+{
+  if (len == 0)
+    return HPE_OK;
+  struct http_client *client
+      = container_of (parser, struct http_client, parser);
+  usz siz = client->body ? client->body->size : 0;
+  client->body = rebin$ (client->body, siz + len);
+  if (!client->body || client->body->size != siz + len)
+    return HPE_USER;
+  memcpy (client->body->store + siz, at, len);
+  return HPE_OK;
+}
+
 static void
 on_read (uv_stream_t *stream, ssize_t nread, uv_buf_t const *buf)
 {
@@ -103,78 +166,6 @@ on_read_alloc (uv_handle_t *handle, size_t siz, uv_buf_t *buf)
 {
   buf->base = malloc$ (siz);
   buf->len = siz;
-}
-
-static void
-http_response (struct http_client *client, char *header, byte *content,
-               usz length)
-{
-  struct http_response *r = malloc$ (sizeof (*r));
-  usz hsiz = strlen (header);
-  usz bufsiz = sizeof (H1) + hsiz + sizeof (H1_CONNECTION)
-               + sizeof ("keep-alive") + sizeof (H1_CONTENT_LENGTH)
-               + sizeof (quote$ (SIZE_MAX)) + sizeof (H1_EOL) + length;
-  char *cur = r->write_buffer.base = malloc (bufsiz);
-  if (cur)
-    {
-      r->keep_alive = llhttp_should_keep_alive (&client->parser);
-      memcpy (cur, H1, sizeof (H1) - 1);
-      cur += sizeof (H1) - 1;
-      *cur++ = ' ';
-      memcpy (cur, header, hsiz);
-      cur += hsiz;
-      cur += sprintf (cur, H1_CONNECTION,
-                      r->keep_alive ? "keep-alive" : "close");
-      cur += sprintf (cur, H1_CONTENT_LENGTH, length);
-      memcpy (cur, H1_EOL, sizeof (H1_EOL) - 1);
-      cur += sizeof (H1_EOL) - 1;
-      memcpy (cur, content, length);
-      cur += length;
-      r->write_buffer.len = cur - r->write_buffer.base;
-    }
-  else
-    {
-      uv_read_stop ((uv_stream_t *)client);
-      r->keep_alive = false;
-      r->write_buffer.base = H1_400;
-      r->write_buffer.len = strlen (H1_400);
-    }
-  free (client->body);
-  client->body = null;
-  enqueue_response (client, r);
-}
-
-static void
-handle_http_request (struct http_client *client)
-{
-  bsto *body = client->body ? client->body : &(bsto){ 0 };
-  char header[] = H1_CODE_200 H1_EOL;
-
-  http_response (client, header, body->store, body->size);
-}
-
-static int
-on_body (llhttp_t *parser, char const *at, usz len)
-{
-  if (len == 0)
-    return HPE_OK;
-  struct http_client *client
-      = container_of (parser, struct http_client, parser);
-  usz siz = client->body ? client->body->size : 0;
-  client->body = rebin$ (client->body, siz + len);
-  if (!client->body || client->body->size != siz + len)
-    return HPE_USER;
-  memcpy (client->body->store + siz, at, len);
-  return HPE_OK;
-}
-
-static int
-on_message_complete (llhttp_t *parser)
-{
-  struct http_client *client
-      = container_of (parser, struct http_client, parser);
-  handle_http_request (client);
-  return HPE_OK;
 }
 
 static void

@@ -90,6 +90,7 @@ struct http_response
   uv_write_t write_request;
   uv_buf_t write_buffer;
   bool keep_alive : 1;
+  char buffer[0];
 };
 
 int http_listen (char const *host, unsigned short port);
