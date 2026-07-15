@@ -30,6 +30,8 @@ clean:
 cmacs.h:
 	$(WGET) -O $@ https://raw.github.com/ArcanusNEO/cmacs/master/cmacs.h
 
+extern:
+	@install -d extern
 # extern: extern/yyjson.h
 # 	@install -d extern
 # extern/yyjson.h:
