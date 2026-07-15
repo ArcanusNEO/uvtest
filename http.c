@@ -21,6 +21,14 @@ free_client (struct h1_client *client)
 }
 
 static void
+on_write (uv_write_t *request, int status)
+{
+  struct h1_client *client
+      = container_of (request, struct h1_client, write_request);
+  free (client->write_buffer.base);
+}
+
+static void
 on_read (uv_stream_t *stream, ssize_t nread, uv_buf_t const *buf)
 {
   if (nread <= 0)
@@ -36,7 +44,7 @@ on_read (uv_stream_t *stream, ssize_t nread, uv_buf_t const *buf)
       client->write_buffer.base = H1_400;
       client->write_buffer.len = sizeof (H1_400) - 1;
       uv_write (&client->write_request, stream, &client->write_buffer, 1,
-                null);
+                on_write);
       uv_close ((uv_handle_t *)stream, (uv_close_cb)free_client);
     }
   free (buf->base);
@@ -70,8 +78,10 @@ response (struct h1_client *client, char *header, byte *content, usz length)
   memcpy (cur, content, length);
   cur += length;
   client->write_buffer.len = cur - client->write_buffer.base;
-  uv_write (&client->write_request, (uv_stream_t *)client,
-            &client->write_buffer, 1, null);
+  int wr = uv_write (&client->write_request, (uv_stream_t *)client,
+                     &client->write_buffer, 1, on_write);
+  if (wr)
+    on_write (&client->write_request, -wr);
   return keep_alive;
 }
 
@@ -84,7 +94,6 @@ handle_http_request (struct h1_client *client)
   if (response (client, header, body->store, body->size))
     {
       llhttp_init (&client->parser, HTTP_BOTH, &client->settings);
-      client->parser.data = client;
       free_http (client);
       return;
     }
@@ -94,7 +103,7 @@ handle_http_request (struct h1_client *client)
 static int
 on_body (llhttp_t *parser, char const *at, usz len)
 {
-  struct h1_client *client = parser->data;
+  struct h1_client *client = container_of (parser, struct h1_client, parser);
   usz siz = client->body ? client->body->size : 0;
   client->body = rebin$ (client->body, siz + len);
   clogger (ASSERT, client->body->size == siz + len);
@@ -105,7 +114,7 @@ on_body (llhttp_t *parser, char const *at, usz len)
 static int
 on_message_complete (llhttp_t *parser)
 {
-  struct h1_client *client = parser->data;
+  struct h1_client *client = container_of (parser, struct h1_client, parser);
   handle_http_request (client);
   return HPE_OK;
 }
@@ -117,14 +126,12 @@ on_connection (uv_stream_t *srv, int status)
     return;
   struct h1_client *client = calloc$ (sizeof (*client));
   uv_tcp_init (srv->loop, &client->tcp_handle);
-  client->tcp_handle.data = client;
   if (uv_accept (srv, (uv_stream_t *)client) < 0)
     return uv_close ((uv_handle_t *)client, (uv_close_cb)free);
   llhttp_settings_init (&client->settings);
   client->settings.on_body = on_body;
   client->settings.on_message_complete = on_message_complete;
   llhttp_init (&client->parser, HTTP_BOTH, &client->settings);
-  client->parser.data = client;
   uv_read_start ((uv_stream_t *)client, on_read_alloc, on_read);
 }
 
