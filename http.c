@@ -100,10 +100,7 @@ handle_http_request (struct h1_client *client)
   char header[] = H1_CODE_200 H1_EOL;
 
   if (response (client, header, body->store, body->size))
-    {
-      llhttp_init (&client->parser, HTTP_BOTH, &client->settings);
-      free_http (client);
-    }
+    free_http (client);
 }
 
 static int
