@@ -7,7 +7,7 @@ static char *H1_400 = "HTTP/1.1 " H1_CODE_400 "\r\n"
                       "Bad Request";
 
 static void
-free_http (struct http_client *client)
+free_request (struct http_client *client)
 {
   if (!client)
     return;
@@ -73,6 +73,7 @@ write_next (struct http_client *client)
 static void
 enqueue_response (struct http_client *client, struct http_response *response)
 {
+  free_request (client);
   response->client = client;
   bool idle = client->response_queue.next == &client->response_queue;
   list$ (ins) (&response->list_entry, client->response_queue.prev,
@@ -92,10 +93,7 @@ http_response (struct http_client *client, char *header, byte *content,
                + sizeof (H1_EOL) + length;
   struct http_response *r = malloc (sizeof (*r) + bufsiz);
   if (!r)
-    {
-      free_http (client);
-      return HPE_USER;
-    }
+    return HPE_USER;
   char *cur = r->write_buffer.base = r->buffer;
   r->keep_alive = llhttp_should_keep_alive (&client->parser);
   memcpy (cur, H1, sizeof (H1) - 1);
@@ -110,7 +108,6 @@ http_response (struct http_client *client, char *header, byte *content,
   memcpy (cur, content, length);
   cur += length;
   r->write_buffer.len = cur - r->write_buffer.base;
-  free_http (client);
   enqueue_response (client, r);
   return HPE_OK;
 }
@@ -281,7 +278,7 @@ http_listen (struct sockaddr const *addr, long threads)
   if (threads <= 0)
     threads = uv_available_parallelism () + threads;
   if (threads <= 1)
-    return serve (uv_default_loop (), addr, UV_TCP_REUSEPORT);
+    return serve (uv_default_loop (), addr, 0);
   struct worker *w = calloc (threads, sizeof (*w));
   if (!w)
     return 1;
