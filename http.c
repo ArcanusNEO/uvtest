@@ -279,7 +279,7 @@ http_listen (struct sockaddr const *addr, long threads)
   signal (SIGPIPE, SIG_IGN);
   init_static ();
   if (threads <= 0)
-    threads = uv_available_parallelism () - threads;
+    threads = uv_available_parallelism () + threads;
   if (threads <= 1)
     return serve (uv_default_loop (), addr, UV_TCP_REUSEPORT);
   struct worker *w = calloc (threads, sizeof (*w));
