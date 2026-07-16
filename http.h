@@ -92,7 +92,6 @@ struct http_response
   char buffer[0];
 };
 
-int http_listen (struct sockaddr const *addr);
-int http_listen_mt (struct sockaddr const *addr, unsigned threads);
+int http_listen (struct sockaddr const *addr, long threads);
 
 #endif /* HTTP_H */

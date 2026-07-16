@@ -257,19 +257,6 @@ serve (uv_loop_t *loop, struct sockaddr const *addr, unsigned flags)
   return uv_run (loop, UV_RUN_DEFAULT);
 }
 
-int
-http_listen (struct sockaddr const *addr)
-{
-  signal (SIGPIPE, SIG_IGN);
-  init_static ();
-  return serve (uv_default_loop (), addr, 0);
-}
-
-/* One event loop per thread, each with its own SO_REUSEPORT listener bound to
-   the same port. The kernel load-balances incoming connections across the
-   listeners. All per-connection state is loop-local, so no locking is needed;
-   the only shared state (llhttp_settings, H1_400) is read-only after
-   init_static (), which runs before any worker thread starts. */
 struct worker
 {
   pthread_t thread;
@@ -283,33 +270,32 @@ worker_main (void *arg)
 {
   struct worker *w = arg;
   w->result = serve (&w->loop, w->addr, UV_TCP_REUSEPORT);
-  return null;
+  pthread_exit (null);
 }
 
 int
-http_listen_mt (struct sockaddr const *addr, unsigned threads)
+http_listen (struct sockaddr const *addr, long threads)
 {
   signal (SIGPIPE, SIG_IGN);
   init_static ();
-  if (threads == 0)
-    threads = uv_available_parallelism ();
+  if (threads <= 0)
+    threads = uv_available_parallelism () - threads;
   if (threads <= 1)
     return serve (uv_default_loop (), addr, UV_TCP_REUSEPORT);
   struct worker *w = calloc (threads, sizeof (*w));
   if (!w)
     return 1;
-  unsigned started = 0;
-  for (unsigned i = 0; i < threads; ++i)
+  unsigned started;
+  for (started = 0; started < threads; ++started)
     {
-      if (uv_loop_init (&w[i].loop))
+      if (uv_loop_init (&w[started].loop))
         break;
-      w[i].addr = addr;
-      if (pthread_create (&w[i].thread, null, worker_main, &w[i]))
+      w[started].addr = addr;
+      if (pthread_create (&w[started].thread, null, worker_main, &w[started]))
         {
-          uv_loop_close (&w[i].loop);
+          uv_loop_close (&w[started].loop);
           break;
         }
-      ++started;
     }
   if (started == 0)
     {
