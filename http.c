@@ -222,17 +222,20 @@ init_static ()
 }
 
 int
-http_listen (char const *host, unsigned short port)
+http_listen (struct sockaddr const *addr)
 {
   signal (SIGPIPE, SIG_IGN);
   init_static ();
   auto loop = uv_default_loop ();
   uv_tcp_t server;
-  uv_tcp_init (loop, &server);
-  struct sockaddr_in addr;
-  if (uv_ip4_addr (host, port, &addr))
-    return 1;
-  if (uv_tcp_bind (&server, (struct sockaddr *)&addr, 0))
+  uv_tcp_init_ex (loop, &server, addr->sa_family);
+  if (addr->sa_family == AF_INET6)
+    {
+      uv_os_fd_t fd;
+      if (!uv_fileno ((uv_handle_t *)&server, &fd))
+        setsockopt (fd, IPPROTO_IPV6, IPV6_V6ONLY, &(int){ 0 }, sizeof (int));
+    }
+  if (uv_tcp_bind (&server, addr, 0))
     return 1;
   if (uv_listen ((uv_stream_t *)&server, 16384, on_connection) < 0)
     return 1;

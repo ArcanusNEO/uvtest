@@ -92,6 +92,6 @@ struct http_response
   char buffer[0];
 };
 
-int http_listen (char const *host, unsigned short port);
+int http_listen (struct sockaddr const *addr);
 
 #endif /* HTTP_H */
