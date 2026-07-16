@@ -151,7 +151,12 @@ on_read (uv_stream_t *stream, ssize_t nread, uv_buf_t const *buf)
         close_client (client);
       return;
     }
-  if (llhttp_execute (&client->parser, buf->base, nread) != HPE_OK)
+  llhttp_errno_t llerr = llhttp_execute (&client->parser, buf->base, nread);
+  if (llerr == HPE_PAUSED)
+    close_client (client);
+  else if (llerr == HPE_PAUSED_UPGRADE)
+    ;
+  else if (llerr != HPE_OK)
     {
       uv_read_stop (stream);
       struct http_response *response = malloc (sizeof (*response));
@@ -200,7 +205,7 @@ on_connection (uv_stream_t *srv, int status)
   uv_tcp_init (srv->loop, &client->tcp_handle);
   if (uv_accept (srv, (uv_stream_t *)client))
     return uv_close ((uv_handle_t *)client, (uv_close_cb)free);
-  llhttp_init (&client->parser, HTTP_BOTH, &llhttp_settings);
+  llhttp_init (&client->parser, HTTP_REQUEST, &llhttp_settings);
   client->response_queue.next = client->response_queue.prev
       = &client->response_queue;
   uv_read_start ((uv_stream_t *)client, on_read_alloc, on_read);
