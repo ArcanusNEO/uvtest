@@ -151,24 +151,37 @@ on_read (uv_stream_t *stream, ssize_t nread, uv_buf_t const *buf)
         close_client (client);
       return;
     }
-  llhttp_errno_t llerr = llhttp_execute (&client->parser, buf->base, nread);
-  if (llerr == HPE_PAUSED)
-    close_client (client);
-  else if (llerr == HPE_PAUSED_UPGRADE)
-    ;
-  else if (llerr != HPE_OK)
+  for (char *buffer = buf->base;;)
     {
-      uv_read_stop (stream);
-      struct http_response *response = malloc (sizeof (*response));
-      if (response)
-        {
-          response->keep_alive = false;
-          response->write_buffer.base = H1_400;
-          response->write_buffer.len = strlen (H1_400);
-          enqueue_response (client, response);
-        }
-      else
+      llhttp_errno_t llerr = llhttp_execute (&client->parser, buffer, nread);
+      if (llerr == HPE_PAUSED)
         close_client (client);
+      else if (llerr == HPE_PAUSED_UPGRADE)
+        {
+          llhttp_resume_after_upgrade (&client->parser);
+          usz off = llhttp_get_error_pos (&client->parser) - buffer;
+          if (off < nread)
+            {
+              buffer += off;
+              nread -= off;
+              continue;
+            }
+        }
+      else if (llerr != HPE_OK)
+        {
+          uv_read_stop (stream);
+          struct http_response *response = malloc (sizeof (*response));
+          if (response)
+            {
+              response->keep_alive = false;
+              response->write_buffer.base = H1_400;
+              response->write_buffer.len = strlen (H1_400);
+              enqueue_response (client, response);
+            }
+          else
+            close_client (client);
+        }
+      break;
     }
   free (buf->base);
 }
