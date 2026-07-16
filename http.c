@@ -87,8 +87,8 @@ http_response (struct http_client *client, char *header, byte *content,
                usz length)
 {
   usz hsiz = strlen (header);
-  usz bufsiz = 16 + sizeof (H1) + hsiz + sizeof (H1_CONNECTION)
-               + umax$ (sizeof ("close"), sizeof ("keep-alive"))
+  usz bufsiz = sizeof (H1) + 1 + hsiz + sizeof (H1_CONNECTION)
+               + umax$ (sizeof ("keep-alive"), sizeof ("close"))
                + sizeof (H1_CONTENT_LENGTH) + sizeof (quote$ (SIZE_MAX))
                + sizeof (H1_EOL) + length;
   struct http_response *r = malloc (sizeof (*r) + bufsiz);
