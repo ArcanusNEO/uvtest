@@ -153,11 +153,14 @@ on_read (uv_stream_t *stream, ssize_t nread, uv_buf_t const *buf)
     }
   for (char *buffer = buf->base;;)
     {
-      llhttp_errno_t llerr = llhttp_execute (&client->parser, buffer, nread);
-      if (llerr == HPE_PAUSED)
-        close_client (client);
-      else if (llerr == HPE_PAUSED_UPGRADE)
+      switch (llhttp_execute (&client->parser, buffer, nread))
         {
+        case HPE_OK:;
+          break;
+        case HPE_PAUSED:;
+          close_client (client);
+          break;
+        case HPE_PAUSED_UPGRADE:;
           llhttp_resume_after_upgrade (&client->parser);
           auto off = llhttp_get_error_pos (&client->parser) - buffer;
           if (off < nread)
@@ -166,9 +169,8 @@ on_read (uv_stream_t *stream, ssize_t nread, uv_buf_t const *buf)
               nread -= off;
               continue;
             }
-        }
-      else if (llerr != HPE_OK)
-        {
+          break;
+        default:;
           uv_read_stop (stream);
           struct http_response *response = malloc (sizeof (*response));
           if (response)
@@ -180,6 +182,7 @@ on_read (uv_stream_t *stream, ssize_t nread, uv_buf_t const *buf)
             }
           else
             close_client (client);
+          break;
         }
       break;
     }
