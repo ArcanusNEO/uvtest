@@ -159,7 +159,7 @@ on_read (uv_stream_t *stream, ssize_t nread, uv_buf_t const *buf)
       else if (llerr == HPE_PAUSED_UPGRADE)
         {
           llhttp_resume_after_upgrade (&client->parser);
-          usz off = llhttp_get_error_pos (&client->parser) - buffer;
+          auto off = llhttp_get_error_pos (&client->parser) - buffer;
           if (off < nread)
             {
               buffer += off;
