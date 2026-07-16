@@ -239,12 +239,9 @@ init_static ()
   inited = true;
 }
 
-int
-http_listen (struct sockaddr const *addr)
+static int
+serve (uv_loop_t *loop, struct sockaddr const *addr, unsigned flags)
 {
-  signal (SIGPIPE, SIG_IGN);
-  init_static ();
-  auto loop = uv_default_loop ();
   uv_tcp_t server;
   uv_tcp_init_ex (loop, &server, addr->sa_family);
   if (addr->sa_family == AF_INET6)
@@ -253,9 +250,80 @@ http_listen (struct sockaddr const *addr)
       if (!uv_fileno ((uv_handle_t *)&server, &fd))
         setsockopt (fd, IPPROTO_IPV6, IPV6_V6ONLY, &(int){ 0 }, sizeof (int));
     }
-  if (uv_tcp_bind (&server, addr, 0))
+  if (uv_tcp_bind (&server, addr, flags))
     return 1;
   if (uv_listen ((uv_stream_t *)&server, 16384, on_connection))
     return 1;
   return uv_run (loop, UV_RUN_DEFAULT);
+}
+
+int
+http_listen (struct sockaddr const *addr)
+{
+  signal (SIGPIPE, SIG_IGN);
+  init_static ();
+  return serve (uv_default_loop (), addr, 0);
+}
+
+/* One event loop per thread, each with its own SO_REUSEPORT listener bound to
+   the same port. The kernel load-balances incoming connections across the
+   listeners. All per-connection state is loop-local, so no locking is needed;
+   the only shared state (llhttp_settings, H1_400) is read-only after
+   init_static (), which runs before any worker thread starts. */
+struct worker
+{
+  pthread_t thread;
+  uv_loop_t loop;
+  struct sockaddr const *addr;
+  int result;
+};
+
+static void *
+worker_main (void *arg)
+{
+  struct worker *w = arg;
+  w->result = serve (&w->loop, w->addr, UV_TCP_REUSEPORT);
+  return null;
+}
+
+int
+http_listen_mt (struct sockaddr const *addr, unsigned threads)
+{
+  signal (SIGPIPE, SIG_IGN);
+  init_static ();
+  if (threads == 0)
+    threads = uv_available_parallelism ();
+  if (threads <= 1)
+    return serve (uv_default_loop (), addr, UV_TCP_REUSEPORT);
+  struct worker *w = calloc (threads, sizeof (*w));
+  if (!w)
+    return 1;
+  unsigned started = 0;
+  for (unsigned i = 0; i < threads; ++i)
+    {
+      if (uv_loop_init (&w[i].loop))
+        break;
+      w[i].addr = addr;
+      if (pthread_create (&w[i].thread, null, worker_main, &w[i]))
+        {
+          uv_loop_close (&w[i].loop);
+          break;
+        }
+      ++started;
+    }
+  if (started == 0)
+    {
+      free (w);
+      return 1;
+    }
+  int result = 0;
+  for (unsigned i = 0; i < started; ++i)
+    {
+      pthread_join (w[i].thread, null);
+      uv_loop_close (&w[i].loop);
+      if (w[i].result)
+        result = w[i].result;
+    }
+  free (w);
+  return result;
 }

@@ -93,5 +93,6 @@ struct http_response
 };
 
 int http_listen (struct sockaddr const *addr);
+int http_listen_mt (struct sockaddr const *addr, unsigned threads);
 
 #endif /* HTTP_H */
