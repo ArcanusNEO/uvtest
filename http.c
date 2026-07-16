@@ -183,7 +183,7 @@ on_read_alloc (uv_handle_t *handle, size_t siz, uv_buf_t *buf)
 static void
 on_connection (uv_stream_t *srv, int status)
 {
-  if (status < 0)
+  if (status)
     return;
   struct http_client *client = calloc (1, sizeof (*client));
   if (!client)
@@ -201,7 +201,7 @@ on_connection (uv_stream_t *srv, int status)
       return;
     }
   uv_tcp_init (srv->loop, &client->tcp_handle);
-  if (uv_accept (srv, (uv_stream_t *)client) < 0)
+  if (uv_accept (srv, (uv_stream_t *)client))
     return uv_close ((uv_handle_t *)client, (uv_close_cb)free);
   llhttp_init (&client->parser, HTTP_BOTH, &llhttp_settings);
   client->response_queue.next = client->response_queue.prev
@@ -237,7 +237,7 @@ http_listen (struct sockaddr const *addr)
     }
   if (uv_tcp_bind (&server, addr, 0))
     return 1;
-  if (uv_listen ((uv_stream_t *)&server, 16384, on_connection) < 0)
+  if (uv_listen ((uv_stream_t *)&server, 16384, on_connection))
     return 1;
   return uv_run (loop, UV_RUN_DEFAULT);
 }
