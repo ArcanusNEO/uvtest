@@ -1,4 +1,7 @@
 #include "http.h"
+#if _P_PLATFORM_ == (_P_UNIX_ + 0)
+#include <sched.h>
+#endif
 static llhttp_settings_t llhttp_settings;
 static char *H1_400 = "HTTP/1.1 " H1_CODE_400 "\r\n"
                       "Connection: close\r\n"
@@ -87,8 +90,9 @@ http_response (struct http_client *client, char *header, byte *content,
 {
   usz hsiz = strlen (header);
   usz bufsiz = sizeof (H1) + hsiz + sizeof (H1_CONNECTION)
-               + sizeof ("keep-alive") + sizeof (H1_CONTENT_LENGTH)
-               + sizeof (quote$ (SIZE_MAX)) + sizeof (H1_EOL) + length;
+               + umax$ (sizeof ("close"), sizeof ("keep-alive"))
+               + sizeof (H1_CONTENT_LENGTH) + sizeof (quote$ (SIZE_MAX))
+               + sizeof (H1_EOL) + length;
   struct http_response *r = malloc (sizeof (*r) + bufsiz);
   if (!r)
     {
@@ -184,10 +188,20 @@ on_connection (uv_stream_t *srv, int status)
   struct http_client *client = calloc (1, sizeof (*client));
   if (!client)
     {
-      static struct http_client closer;
-      uv_tcp_init (srv->loop, &closer.tcp_handle);
-      uv_accept (srv, (uv_stream_t *)&closer);
-      uv_close ((uv_handle_t *)&closer, null);
+      uv_tcp_t *closer = null;
+      while (!closer)
+        {
+#if _P_PLATFORM_ == (_P_UNIX_ + 0)
+          sched_yield ();
+#elif _P_PLATFORM_ == (_P_WINDOWS_ + 0)
+          SwitchToThread ();
+#endif
+          closer = malloc (sizeof (*closer));
+        }
+      uv_tcp_init (srv->loop, closer);
+      uv_accept (srv, (uv_stream_t *)closer);
+      uv_tcp_close_reset (closer, (uv_close_cb)free);
+      return;
     }
   uv_tcp_init (srv->loop, &client->tcp_handle);
   if (uv_accept (srv, (uv_stream_t *)client) < 0)
@@ -201,9 +215,13 @@ on_connection (uv_stream_t *srv, int status)
 static void
 init_static ()
 {
+  static bool inited;
+  if (inited)
+    return;
   llhttp_settings_init (&llhttp_settings);
   llhttp_settings.on_body = on_body;
   llhttp_settings.on_message_complete = on_message_complete;
+  inited = true;
 }
 
 int
