@@ -87,7 +87,7 @@ http_response (struct http_client *client, char *header, byte *content,
                usz length)
 {
   usz hsiz = strlen (header);
-  usz bufsiz = sizeof (H1) + hsiz + sizeof (H1_CONNECTION)
+  usz bufsiz = 16 + sizeof (H1) + hsiz + sizeof (H1_CONNECTION)
                + umax$ (sizeof ("close"), sizeof ("keep-alive"))
                + sizeof (H1_CONTENT_LENGTH) + sizeof (quote$ (SIZE_MAX))
                + sizeof (H1_EOL) + length;
@@ -247,10 +247,13 @@ serve (uv_loop_t *loop, struct sockaddr const *addr, unsigned flags)
       if (!uv_fileno ((uv_handle_t *)&server, &fd))
         setsockopt (fd, IPPROTO_IPV6, IPV6_V6ONLY, &(int){ 0 }, sizeof (int));
     }
-  if (uv_tcp_bind (&server, addr, flags))
-    return 1;
-  if (uv_listen ((uv_stream_t *)&server, 16384, on_connection))
-    return 1;
+  if (uv_tcp_bind (&server, addr, flags)
+      || uv_listen ((uv_stream_t *)&server, 16384, on_connection))
+    {
+      uv_close ((uv_handle_t *)&server, null);
+      uv_run (loop, UV_RUN_DEFAULT);
+      return 1;
+    }
   return uv_run (loop, UV_RUN_DEFAULT);
 }
 
