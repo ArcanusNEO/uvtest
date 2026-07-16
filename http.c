@@ -1,7 +1,4 @@
 #include "http.h"
-#if _P_PLATFORM_ == (_P_UNIX_ + 0)
-#include <sched.h>
-#endif
 static llhttp_settings_t llhttp_settings;
 static char *H1_400 = "HTTP/1.1 " H1_CODE_400 "\r\n"
                       "Connection: close\r\n"
@@ -176,7 +173,7 @@ on_read_alloc (uv_handle_t *handle, size_t siz, uv_buf_t *buf)
 {
   buf->base = null;
   while (siz && !(buf->base = malloc (siz)))
-    siz /= 2;
+    siz >>= 1;
   buf->len = siz;
 }
 
@@ -191,12 +188,12 @@ on_connection (uv_stream_t *srv, int status)
       uv_tcp_t *closer = null;
       while (!closer)
         {
-          // FIXME
           sched_yield ();
           closer = malloc (sizeof (*closer));
         }
       uv_tcp_init (srv->loop, closer);
-      uv_accept (srv, (uv_stream_t *)closer);
+      if (uv_accept (srv, (uv_stream_t *)closer))
+        return uv_close ((uv_handle_t *)closer, (uv_close_cb)free);
       uv_tcp_close_reset (closer, (uv_close_cb)free);
       return;
     }
