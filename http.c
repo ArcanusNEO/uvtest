@@ -5,6 +5,11 @@ static char *H1_400 = "HTTP/1.1 " H1_CODE_400 "\r\n"
                       "Content-Length: 11\r\n"
                       "\r\n"
                       "Bad Request";
+static char *H1_404 = "HTTP/1.1 " H1_CODE_404 "\r\n"
+                      "Connection: close\r\n"
+                      "Content-Length: 9\r\n"
+                      "\r\n"
+                      "Not Found";
 
 static void
 free_request (struct http_client *client)

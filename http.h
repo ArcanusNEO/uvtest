@@ -28,6 +28,7 @@
 #define H1_CODE_303 "303 See Other"
 #define H1_CODE_304 "304 Not Modified"
 #define H1_CODE_305 "305 Use Proxy"
+#define H1_CODE_306 "306 Switch Proxy"
 #define H1_CODE_307 "307 Temporary Redirect"
 #define H1_CODE_308 "308 Permanent Redirect"
 #define H1_CODE_400 "400 Bad Request"
@@ -72,6 +73,7 @@
 #define H1_SERVER "Server: %s\r\n"
 #define H1_CONNECTION "Connection: %s\r\n"
 #define H1_CONTENT_LENGTH "Content-Length: %zu\r\n"
+#define H1_CONTENT_TYPE "Content-Type: %s\r\n"
 
 struct http_client
 {
