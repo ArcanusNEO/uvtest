@@ -1,11 +1,11 @@
 #include "http.h"
 static llhttp_settings_t llhttp_settings;
-static char *H1_400 = "HTTP/1.1 " H1_CODE_400 "\r\n"
+static char *H1_400 = "HTTP/1.1 " HTTP_CODE_400 "\r\n"
                       "Connection: close\r\n"
                       "Content-Length: 11\r\n"
                       "\r\n"
                       "Bad Request";
-static char *H1_404 = "HTTP/1.1 " H1_CODE_404 "\r\n"
+static char *H1_404 = "HTTP/1.1 " HTTP_CODE_404 "\r\n"
                       "Connection: close\r\n"
                       "Content-Length: 9\r\n"
                       "\r\n"
@@ -123,7 +123,7 @@ on_message_complete (llhttp_t *parser)
   struct http_client *client
       = container_of (parser, struct http_client, parser);
   bsto *body = client->body ? client->body : &(bsto){ 0 };
-  char header[] = H1_CODE_200 H1_EOL;
+  char header[] = HTTP_CODE_200 H1_EOL;
   return http_response (client, header, body->store, body->size);
 }
 
