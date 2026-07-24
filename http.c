@@ -18,7 +18,113 @@ free_request (struct http_client *client)
     return;
   free (client->body);
   client->body = null;
+  /* keep hdr_buf / hdr_arr allocations for reuse on keep-alive; just reset
+     the logical sizes and per-request accumulation state. */
+  if (client->hdr_buf)
+    client->hdr_buf->size = 0;
+  client->hdr_count = 0;
+  client->hdr_cur = (struct http_header){ 0 };
+  client->hdr_state = HDR_NONE;
 }
+
+/* append len bytes to the client's header byte buffer, returning the offset
+   at which they were written, or SIZE_MAX on allocation failure. */
+static usz
+hdr_buf_append (struct http_client *client, char const *at, usz len)
+{
+  usz off = client->hdr_buf ? client->hdr_buf->size : 0;
+  bsto *nb = rebin$ (client->hdr_buf, off + len);
+  if (!nb || nb->size != off + len)
+    {
+      client->hdr_buf = nb ? nb : client->hdr_buf;
+      return SIZE_MAX;
+    }
+  client->hdr_buf = nb;
+  memcpy (nb->store + off, at, len);
+  return off;
+}
+
+/* push the fully-accumulated current header onto the ordered array. */
+static int
+hdr_record (struct http_client *client)
+{
+  usz n = client->hdr_count;
+  bsto *na = rebin$ (client->hdr_arr, (n + 1) * sizeof (struct http_header));
+  if (!na || na->size != (n + 1) * sizeof (struct http_header))
+    {
+      client->hdr_arr = na ? na : client->hdr_arr;
+      return HPE_USER;
+    }
+  client->hdr_arr = na;
+  ((struct http_header *)na->store)[n] = client->hdr_cur;
+  client->hdr_count = n + 1;
+  client->hdr_cur = (struct http_header){ 0 };
+  return HPE_OK;
+}
+
+static int
+on_header_field (llhttp_t *parser, char const *at, usz len)
+{
+  struct http_client *client
+      = container_of (parser, struct http_client, parser);
+  /* a new field after a value means the previous pair is complete. */
+  if (client->hdr_state == HDR_VALUE)
+    {
+      if (hdr_record (client) != HPE_OK)
+        return HPE_USER;
+    }
+  usz off = hdr_buf_append (client, at, len);
+  if (off == SIZE_MAX)
+    return HPE_USER;
+  if (client->hdr_state != HDR_FIELD)
+    {
+      client->hdr_cur.name_off = off;
+      client->hdr_cur.name_len = 0;
+      client->hdr_state = HDR_FIELD;
+    }
+  client->hdr_cur.name_len += len;
+  return HPE_OK;
+}
+
+static int
+on_header_value (llhttp_t *parser, char const *at, usz len)
+{
+  struct http_client *client
+      = container_of (parser, struct http_client, parser);
+  usz off = hdr_buf_append (client, at, len);
+  if (off == SIZE_MAX)
+    return HPE_USER;
+  if (client->hdr_state != HDR_VALUE)
+    {
+      client->hdr_cur.value_off = off;
+      client->hdr_cur.value_len = 0;
+      client->hdr_state = HDR_VALUE;
+    }
+  client->hdr_cur.value_len += len;
+  return HPE_OK;
+}
+
+/* case-insensitive field-name comparison; ties broken by length then by the
+   raw value order so the sort is a total, stable ordering. */
+static int
+hdr_cmp (void const *a, void const *b, void *arg)
+{
+  struct http_client *client = arg;
+  struct http_header const *x = a, *y = b;
+  byte const *base = client->hdr_buf->store;
+  byte const *xn = base + x->name_off, *yn = base + y->name_off;
+  usz n = umin$ (x->name_len, y->name_len);
+  for (usz i = 0; i < n; ++i)
+    {
+      int cx = tolower (xn[i]), cy = tolower (yn[i]);
+      if (cx != cy)
+        return cx - cy;
+    }
+  if (x->name_len != y->name_len)
+    return x->name_len < y->name_len ? -1 : 1;
+  return (x->name_off > y->name_off) - (x->name_off < y->name_off);
+}
+
 
 static void
 free_client (struct http_client *client)
@@ -33,6 +139,8 @@ free_client (struct http_client *client)
       free (response);
     }
   free (client->body);
+  free (client->hdr_buf);
+  free (client->hdr_arr);
   free (client);
 }
 
@@ -118,13 +226,76 @@ http_response (struct http_client *client, char *header, byte *content,
 }
 
 static int
+on_headers_complete (llhttp_t *parser)
+{
+  struct http_client *client
+      = container_of (parser, struct http_client, parser);
+  /* flush the last accumulated header (it has no trailing field to trigger
+     the record in on_header_field). */
+  if (client->hdr_state == HDR_VALUE)
+    {
+      if (hdr_record (client) != HPE_OK)
+        return HPE_USER;
+    }
+  client->hdr_state = HDR_NONE;
+  if (client->hdr_count > 1)
+    qsort_r (client->hdr_arr->store, client->hdr_count,
+             sizeof (struct http_header), hdr_cmp, client);
+  return HPE_OK;
+}
+
+static int
 on_message_complete (llhttp_t *parser)
 {
   struct http_client *client
       = container_of (parser, struct http_client, parser);
   bsto *body = client->body ? client->body : &(bsto){ 0 };
   char header[] = HTTP_CODE_200 H1_EOL;
-  return http_response (client, header, body->store, body->size);
+
+  /* echo the sorted headers followed by the request body, so the parse
+     result is observable.  build into a scratch binstore. */
+  struct http_header *hdrs = http_headers (client);
+  bsto *out = null;
+  for (usz i = 0; i < client->hdr_count; ++i)
+    {
+      bslc name = http_header_name (client, &hdrs[i]);
+      bslc value = http_header_value (client, &hdrs[i]);
+      usz off = out ? out->size : 0;
+      usz add = name.size + 2 + value.size + 1; /* "name: value\n" */
+      bsto *no = rebin$ (out, off + add);
+      if (!no || no->size != off + add)
+        {
+          free (no ? no : out);
+          return HPE_USER;
+        }
+      out = no;
+      byte *cur = out->store + off;
+      memcpy (cur, name.slice, name.size);
+      cur += name.size;
+      *cur++ = ':';
+      *cur++ = ' ';
+      memcpy (cur, value.slice, value.size);
+      cur += value.size;
+      *cur++ = '\n';
+    }
+  /* append the body after the headers. */
+  if (body->size)
+    {
+      usz off = out ? out->size : 0;
+      bsto *no = rebin$ (out, off + body->size);
+      if (!no || no->size != off + body->size)
+        {
+          free (no ? no : out);
+          return HPE_USER;
+        }
+      out = no;
+      memcpy (out->store + off, body->store, body->size);
+    }
+
+  bsto *payload = out ? out : &(bsto){ 0 };
+  int rc = http_response (client, header, payload->store, payload->size);
+  free (out);
+  return rc;
 }
 
 static int
@@ -236,6 +407,9 @@ init_static ()
   if (inited)
     return;
   llhttp_settings_init (&llhttp_settings);
+  llhttp_settings.on_header_field = on_header_field;
+  llhttp_settings.on_header_value = on_header_value;
+  llhttp_settings.on_headers_complete = on_headers_complete;
   llhttp_settings.on_body = on_body;
   llhttp_settings.on_message_complete = on_message_complete;
   inited = true;

@@ -77,12 +77,33 @@
 #define H1_CONTENT_LENGTH "Content-Length: %zu\r\n"
 #define H1_CONTENT_TYPE "Content-Type: %s\r\n"
 
+/* offset-based header entry; offsets index into http_client.headers store, so
+   they survive the reallocations that happen while the store grows.  name and
+   value bytes are stored contiguously in that single binstore. */
+struct http_header
+{
+  usz name_off, name_len;
+  usz value_off, value_len;
+};
+
+enum http_header_state
+{
+  HDR_NONE,
+  HDR_FIELD,
+  HDR_VALUE,
+};
+
 struct http_client
 {
   uv_tcp_t tcp_handle;
   llhttp_t parser;
   struct lsnod response_queue;
   bsto *body;
+  bsto *hdr_buf;             /* raw name+value bytes for this request       */
+  bsto *hdr_arr;             /* ordered array of struct http_header         */
+  usz hdr_count;            /* live entries in hdr_arr                     */
+  struct http_header hdr_cur; /* token being accumulated across callbacks   */
+  enum http_header_state hdr_state;
   bool closing : 1;
 };
 
@@ -97,5 +118,27 @@ struct http_response
 };
 
 int http_listen (struct sockaddr const *addr, long threads);
+
+/* header views over the client's stable header buffer.  valid from
+   on_headers_complete until the next request resets the buffer. */
+static inline bslc
+http_header_name (struct http_client *client, struct http_header const *h)
+{
+  return (bslc){ .slice = client->hdr_buf->store + h->name_off,
+                 .size = h->name_len };
+}
+
+static inline bslc
+http_header_value (struct http_client *client, struct http_header const *h)
+{
+  return (bslc){ .slice = client->hdr_buf->store + h->value_off,
+                 .size = h->value_len };
+}
+
+static inline struct http_header *
+http_headers (struct http_client *client)
+{
+  return client->hdr_arr ? (struct http_header *)client->hdr_arr->store : null;
+}
 
 #endif /* HTTP_H */
