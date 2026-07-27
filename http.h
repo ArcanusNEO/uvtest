@@ -77,12 +77,20 @@
 #define H1_CONTENT_LENGTH "Content-Length: %zu\r\n"
 #define H1_CONTENT_TYPE "Content-Type: %s\r\n"
 
+struct http_header
+{
+  char *value;
+  struct binstore;
+  char field[0];
+};
+
 struct http_client
 {
   uv_tcp_t tcp_handle;
   llhttp_t parser;
   struct lsnod response_queue;
   bsto *url;
+  bsto *header;
   bsto *body;
   bool closing : 1;
 };

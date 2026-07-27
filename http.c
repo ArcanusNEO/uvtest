@@ -120,12 +120,43 @@ http_response (struct http_client *client, char *header, byte *content,
   return HPE_OK;
 }
 
+static inline bsto *
+ensure_string (bsto *b)
+{
+  if (!b || b->capacity == 0)
+    {
+      b = realloc (b, sizeof (bsto) + 1);
+      if (unlikely (!b))
+        return null;
+      b->capacity = 1;
+      b->size = 0;
+      b->store[0] = '\0';
+      return b;
+    }
+  if (b->size < b->capacity)
+    {
+      b->store[b->size] = '\0';
+      return b;
+    }
+  usz capacity = b->size + 1;
+  b = realloc (b, sizeof (bsto) + capacity);
+  if (unlikely (!b))
+    return null;
+  b->capacity = capacity;
+  b->store[b->size] = '\0';
+  return b;
+}
+
 static int
 on_message_complete (llhttp_t *parser)
 {
   struct http_client *client
       = container_of (parser, struct http_client, parser);
-  bsto *body = client->body ?: &(bsto){ 0 };
+  bsto *body = ensure_string (client->body);
+  if (!body)
+    return HPE_USER;
+  client->body = body;
+
   char header[] = HTTP_CODE_200 H1_EOL;
   return http_response (client, header, body->store, body->size);
 }
@@ -146,15 +177,37 @@ on_body (llhttp_t *parser, char const *at, usz len)
 }
 
 static int
+on_headers_complete (llhttp_t *parser)
+{
+  /* TODO */
+  return HPE_OK;
+}
+
+static int
+on_header_value (llhttp_t *parser, char const *at, usz len)
+{
+  /* TODO */
+  return HPE_OK;
+}
+
+static int
+on_header_field (llhttp_t *parser, char const *at, usz len)
+{
+  /* TODO */
+  return HPE_OK;
+}
+
+static int
 on_url_complete (llhttp_t *parser)
 {
   struct http_client *client
       = container_of (parser, struct http_client, parser);
-  bsto *url = client->url ?: &(bsto){ 0 };
+  bsto *url = ensure_string (client->url);
+  if (!url)
+    return HPE_USER;
+  client->url = url;
   /* TODO: route the request */
-  char buf[256];
-  stpscpy (buf, url->store, min (sizeof (buf), url->size + 1));
-  clogger (DEBUG, buf);
+  clogger (DEBUG, (char *)url->store);
   return HPE_OK;
 }
 
@@ -268,6 +321,10 @@ init_static ()
     return;
   llhttp_settings_init (&llhttp_settings);
   llhttp_settings.on_url = on_url;
+  llhttp_settings.on_url_complete = on_url_complete;
+  llhttp_settings.on_header_field = on_header_field;
+  llhttp_settings.on_header_value = on_header_value;
+  llhttp_settings.on_headers_complete = on_headers_complete;
   llhttp_settings.on_url_complete = on_url_complete;
   llhttp_settings.on_body = on_body;
   llhttp_settings.on_message_complete = on_message_complete;
