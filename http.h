@@ -6,8 +6,6 @@
 #include <llhttp.h>
 #include <uv.h>
 
-#define H1 "HTTP/1.1"
-#define H1_EOL "\r\n"
 #define HTTP_CODE_100 "100 Continue"
 #define HTTP_CODE_101 "101 Switching Protocols"
 #define HTTP_CODE_102 "102 Processing"
@@ -72,6 +70,8 @@
 #define HTTP_CODE_510 "510 Not Extended"
 #define HTTP_CODE_511 "511 Network Authentication Required"
 
+#define H1 "HTTP/1.1"
+#define H1_EOL "\r\n"
 #define H1_SERVER "Server: %s\r\n"
 #define H1_CONNECTION "Connection: %s\r\n"
 #define H1_CONTENT_LENGTH "Content-Length: %zu\r\n"
