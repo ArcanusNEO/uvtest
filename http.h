@@ -82,6 +82,7 @@ struct http_client
   uv_tcp_t tcp_handle;
   llhttp_t parser;
   struct lsnod response_queue;
+  bsto *url;
   bsto *body;
   bool closing : 1;
 };

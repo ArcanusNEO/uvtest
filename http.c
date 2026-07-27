@@ -5,17 +5,20 @@ static char *H1_400 = "HTTP/1.1 " HTTP_CODE_400 "\r\n"
                       "Content-Length: 11\r\n"
                       "\r\n"
                       "Bad Request";
-static char *H1_404 = "HTTP/1.1 " HTTP_CODE_404 "\r\n"
-                      "Connection: close\r\n"
-                      "Content-Length: 9\r\n"
-                      "\r\n"
-                      "Not Found";
+__attribute__ ((__unused__)) static char *H1_404
+    = "HTTP/1.1 " HTTP_CODE_404 "\r\n"
+      "Connection: close\r\n"
+      "Content-Length: 9\r\n"
+      "\r\n"
+      "Not Found";
 
 static void
 free_request (struct http_client *client)
 {
   if (!client)
     return;
+  free (client->url);
+  client->url = null;
   free (client->body);
   client->body = null;
 }
@@ -32,6 +35,7 @@ free_client (struct http_client *client)
       list$ (rem) (&response->list_entry);
       free (response);
     }
+  free (client->url);
   free (client->body);
   free (client);
 }
@@ -92,7 +96,7 @@ http_response (struct http_client *client, char *header, byte *content,
                usz length)
 {
   usz hsiz = strlen (header);
-  usz bufsiz = sizeof (H1) + 1 + hsiz + sizeof (H1_CONNECTION)
+  usz bufsiz = 16 + sizeof (H1) + hsiz + sizeof (H1_CONNECTION)
                + umax$ (sizeof ("keep-alive"), sizeof ("close"))
                + sizeof (H1_CONTENT_LENGTH) + sizeof (quote$ (SIZE_MAX))
                + sizeof (H1_EOL) + length;
@@ -139,6 +143,35 @@ on_body (llhttp_t *parser, char const *at, usz len)
   if (!client->body || client->body->size != siz + len)
     return HPE_USER;
   memcpy (client->body->store + siz, at, len);
+  return HPE_OK;
+}
+
+static int
+on_url_complete (llhttp_t *parser)
+{
+  struct http_client *client
+      = container_of (parser, struct http_client, parser);
+  bsto *url = client->url ? client->url : &(bsto){ 0 };
+  /* TODO: route the request */
+  smartptr char *buf = malloc$ (url->size + 1);
+  memcpy (buf, url->store, url->size);
+  buf[url->size] = '\0';
+  clogger (DEBUG, buf);
+  return HPE_OK;
+}
+
+static int
+on_url (llhttp_t *parser, char const *at, usz len)
+{
+  if (len == 0)
+    return HPE_OK;
+  struct http_client *client
+      = container_of (parser, struct http_client, parser);
+  usz siz = client->url ? client->url->size : 0;
+  client->url = rebin$ (client->url, siz + len);
+  if (!client->url || client->url->size != siz + len)
+    return HPE_USER;
+  memcpy (client->url->store + siz, at, len);
   return HPE_OK;
 }
 
@@ -236,6 +269,8 @@ init_static ()
   if (inited)
     return;
   llhttp_settings_init (&llhttp_settings);
+  llhttp_settings.on_url = on_url;
+  llhttp_settings.on_url_complete = on_url_complete;
   llhttp_settings.on_body = on_body;
   llhttp_settings.on_message_complete = on_message_complete;
   inited = true;
