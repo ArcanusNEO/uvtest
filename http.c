@@ -125,7 +125,7 @@ on_message_complete (llhttp_t *parser)
 {
   struct http_client *client
       = container_of (parser, struct http_client, parser);
-  bsto *body = client->body ? client->body : &(bsto){ 0 };
+  bsto *body = client->body ?: &(bsto){ 0 };
   char header[] = HTTP_CODE_200 H1_EOL;
   return http_response (client, header, body->store, body->size);
 }
@@ -150,11 +150,10 @@ on_url_complete (llhttp_t *parser)
 {
   struct http_client *client
       = container_of (parser, struct http_client, parser);
-  bsto *url = client->url ? client->url : &(bsto){ 0 };
+  bsto *url = client->url ?: &(bsto){ 0 };
   /* TODO: route the request */
-  smartptr char *buf = malloc$ (url->size + 1);
-  memcpy (buf, url->store, url->size);
-  buf[url->size] = '\0';
+  char buf[256];
+  stpscpy (buf, url->store, min (sizeof (buf), url->size + 1));
   clogger (DEBUG, buf);
   return HPE_OK;
 }
