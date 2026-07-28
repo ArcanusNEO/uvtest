@@ -1,6 +1,6 @@
 #pragma once
-#ifndef HTTP_H
-#define HTTP_H
+#ifndef _H_HTTP_
+#define _H_HTTP_ 1
 
 #include <grimoire.h>
 #include <llhttp.h>
@@ -107,4 +107,4 @@ struct http_response
 
 int http_listen (struct sockaddr const *addr, long threads);
 
-#endif /* HTTP_H */
+#endif /* _H_HTTP_ */

@@ -12,14 +12,28 @@ unused$ static char *H1_404 = "HTTP/1.1 " HTTP_CODE_404 "\r\n"
                               "Not Found";
 
 static void
+free_header (struct http_client *client)
+{
+  if (!client || !client->header)
+    return;
+  auto header = (struct http_header *)client->header->store;
+  usz nr = client->header->size / sizeof (struct http_header *);
+  for (usz i = 0; i < nr; ++i)
+    free (&header[i]);
+  free (client->header);
+  client->header = null;
+}
+
+static void
 free_request (struct http_client *client)
 {
   if (!client)
     return;
-  free (client->url);
-  client->url = null;
   free (client->body);
   client->body = null;
+  free_header (client);
+  free (client->url);
+  client->url = null;
 }
 
 static void
@@ -34,8 +48,7 @@ free_client (struct http_client *client)
       list$ (rem) (&response->list_entry);
       free (response);
     }
-  free (client->url);
-  free (client->body);
+  free_request (client);
   free (client);
 }
 
