@@ -17,7 +17,7 @@ free_header (struct http_client *client)
   if (!client || !client->header)
     return;
   auto header = (struct http_header *)client->header->store;
-  usz nr = client->header->size / sizeof (struct http_header *);
+  usz nr = client->header->size / sizeof (header);
   for (usz i = 0; i < nr; ++i)
     free (&header[i]);
   free (client->header);
@@ -162,9 +162,25 @@ on_body (llhttp_t *parser, char const *at, usz len)
 }
 
 static int
+header_compar (void const *u, void const *v)
+{
+  return strcasecmp ((*(struct http_header const **)u)->field,
+                     (*(struct http_header const **)v)->field);
+}
+
+static int
 on_headers_complete (llhttp_t *parser)
 {
-  /* TODO */
+  struct http_client *client
+      = container_of (parser, struct http_client, parser);
+  if (!client->header)
+    {
+      client->header = calloc (1, sizeof (*client->header));
+      return client->header ? HPE_OK : HPE_USER;
+    }
+  auto header = (struct http_header *)client->header->store;
+  usz nr = client->header->size / sizeof (header);
+  qsort (header, nr, sizeof (header[0]), header_compar);
   return HPE_OK;
 }
 
