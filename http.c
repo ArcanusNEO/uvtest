@@ -183,6 +183,8 @@ on_headers_complete (llhttp_t *parser)
   if (nr > 0)
     {
       qsort (header, nr, sizeof (header[0]), header_compar);
+      for (usz i = 0; i < nr; ++i)
+        clogger (DEBUG, header[i]->field, "=", header[i]->value);
       for (usz i = 1; i < nr; ++i)
         if (header_compar (&header[i - 1], &header[i]) == 0)
           return HPE_USER;
