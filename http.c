@@ -16,10 +16,10 @@ free_header (struct http_client *client)
 {
   if (!client || !client->header)
     return;
-  auto header = (struct http_header *)client->header->store;
-  usz nr = client->header->size / sizeof (header);
+  auto header = (struct http_header **)client->header->store;
+  usz nr = client->header->size / sizeof (header[0]);
   for (usz i = 0; i < nr; ++i)
-    free (&header[i]);
+    free (header[i]);
   free (client->header);
   client->header = null;
 }
@@ -154,8 +154,7 @@ on_body (llhttp_t *parser, char const *at, usz len)
   struct http_client *client
       = container_of (parser, struct http_client, parser);
   usz siz = client->body ? client->body->size : 0;
-  client->body = rebin$ (client->body, siz + len);
-  if (!client->body || client->body->size != siz + len)
+  if (!(client->body = rebin$ (client->body, siz + len)))
     return HPE_USER;
   memcpy (client->body->store + siz, at, len);
   return HPE_OK;
@@ -178,23 +177,110 @@ on_headers_complete (llhttp_t *parser)
       client->header = calloc (1, sizeof (*client->header));
       return client->header ? HPE_OK : HPE_USER;
     }
-  auto header = (struct http_header *)client->header->store;
-  usz nr = client->header->size / sizeof (header);
+  auto header = (struct http_header **)client->header->store;
+  usz nr = client->header->size / sizeof (header[0]);
   qsort (header, nr, sizeof (header[0]), header_compar);
+  for (usz i = 1; i < nr; ++i)
+    if (header_compar (&header[i - 1], &header[i]) == 0)
+      return HPE_USER;
   return HPE_OK;
+}
+
+static struct http_header **
+header_last (struct http_client *client)
+{
+  if (!client->header)
+    return null;
+  auto header = (struct http_header **)client->header->store;
+  usz nr = client->header->size / sizeof (header[0]);
+  if (nr == 0)
+    return null;
+  return &header[nr - 1];
+}
+
+static struct http_header **
+header_alloc (struct http_client *client)
+{
+  usz cap = dynarr$ (0, 1);
+  struct http_header *header = malloc (sizeof (*header) + cap);
+  if (!header)
+    return null;
+  header->value = null;
+  header->capacity = cap;
+  header->size = 0;
+  header->field[0] = '\0';
+  usz nr = client->header
+               ? client->header->size / sizeof (struct http_header *)
+               : 0;
+  usz siz = (nr + 1) * sizeof (header);
+  bsto *bin = rebin$ (client->header, siz);
+  if (!bin)
+    {
+      free (header);
+      return null;
+    }
+  client->header = bin;
+  auto slot = &((struct http_header **)bin->store)[nr];
+  *slot = header;
+  return slot;
+}
+
+static struct http_header *
+header_reserve (struct http_header **slot, usz size)
+{
+  struct http_header *header = *slot;
+  usz cap = dynarr$ (header->capacity, size);
+  usz voff = header->value ? (usz)(header->value - header->field) : 0;
+  header = realloc (header, sizeof (*header) + cap);
+  if (!header)
+    return null;
+  header->capacity = cap;
+  header->value = voff ? header->field + voff : null;
+  return *slot = header;
 }
 
 static int
 on_header_value (llhttp_t *parser, char const *at, usz len)
 {
-  /* TODO */
+  if (len == 0)
+    return HPE_OK;
+  struct http_client *client
+      = container_of (parser, struct http_client, parser);
+  auto slot = header_last (client);
+  if (!slot)
+    slot = header_alloc (client);
+  if (!slot)
+    return HPE_USER;
+  struct http_header *header
+      = header_reserve (slot, (*slot)->size + len + 1 + !!(*slot)->value);
+  if (!header)
+    return HPE_USER;
+  if (!header->value)
+    header->value = header->field + ++header->size;
+  memcpy (header->field + header->size, at, len);
+  header->size += len;
+  header->field[header->size] = '\0';
   return HPE_OK;
 }
 
 static int
 on_header_field (llhttp_t *parser, char const *at, usz len)
 {
-  /* TODO */
+  if (len == 0)
+    return HPE_OK;
+  struct http_client *client
+      = container_of (parser, struct http_client, parser);
+  auto slot = header_last (client);
+  if (!slot || (*slot)->value)
+    slot = header_alloc (client);
+  if (!slot)
+    return HPE_USER;
+  struct http_header *header = header_reserve (slot, (*slot)->size + len + 1);
+  if (!header)
+    return HPE_USER;
+  memcpy (header->field + header->size, at, len);
+  header->size += len;
+  header->field[header->size] = '\0';
   return HPE_OK;
 }
 
@@ -220,8 +306,7 @@ on_url (llhttp_t *parser, char const *at, usz len)
   struct http_client *client
       = container_of (parser, struct http_client, parser);
   usz siz = client->url ? client->url->size : 0;
-  client->url = rebin$ (client->url, siz + len);
-  if (!client->url || client->url->size != siz + len)
+  if (!(client->url = rebin$ (client->url, siz + len)))
     return HPE_USER;
   memcpy (client->url->store + siz, at, len);
   return HPE_OK;
