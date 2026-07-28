@@ -77,10 +77,6 @@
 #define H1_CONTENT_LENGTH "Content-Length: %zu\r\n"
 #define H1_CONTENT_TYPE "Content-Type: %s\r\n"
 
-extern char *EMPTYCSTR;
-extern char *H1_RESPONSE_400;
-extern char *H1_RESPONSE_404;
-
 struct http_header
 {
   char *value;
