@@ -273,7 +273,7 @@ on_header_field (llhttp_t *parser, char const *at, usz len)
   struct http_client *client
       = container_of (parser, struct http_client, parser);
   auto slot = header_last (client);
-  if (!slot && (*slot)->value != EMPTYCSTR)
+  if (!slot || (*slot)->value != EMPTYCSTR)
     slot = header_alloc (client);
   if (!slot)
     return HPE_USER;
