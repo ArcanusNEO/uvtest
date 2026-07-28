@@ -1,16 +1,16 @@
 #include "http.h"
 static llhttp_settings_t llhttp_settings;
 char *EMPTYCSTR = "";
-char *H1_400 = "HTTP/1.1 " HTTP_CODE_400 "\r\n"
-               "Connection: close\r\n"
-               "Content-Length: 11\r\n"
-               "\r\n"
-               "Bad Request";
-char *H1_404 = "HTTP/1.1 " HTTP_CODE_404 "\r\n"
-               "Connection: close\r\n"
-               "Content-Length: 9\r\n"
-               "\r\n"
-               "Not Found";
+char *H1_RESPONSE_400 = "HTTP/1.1 " HTTP_CODE_400 "\r\n"
+                        "Connection: close\r\n"
+                        "Content-Length: 11\r\n"
+                        "\r\n"
+                        "Bad Request";
+char *H1_RESPONSE_404 = "HTTP/1.1 " HTTP_CODE_404 "\r\n"
+                        "Connection: close\r\n"
+                        "Content-Length: 9\r\n"
+                        "\r\n"
+                        "Not Found";
 
 static void
 free_header (struct http_client *client)
@@ -350,8 +350,8 @@ on_read (uv_stream_t *stream, ssize_t nread, uv_buf_t const *buf)
           if (response)
             {
               response->keep_alive = false;
-              response->write_buffer.base = H1_400;
-              response->write_buffer.len = strlen (H1_400);
+              response->write_buffer.base = H1_RESPONSE_400;
+              response->write_buffer.len = strlen (H1_RESPONSE_400);
               enqueue_response (client, response);
             }
           else

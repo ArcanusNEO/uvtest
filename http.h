@@ -78,8 +78,8 @@
 #define H1_CONTENT_TYPE "Content-Type: %s\r\n"
 
 extern char *EMPTYCSTR;
-extern char *H1_400;
-extern char *H1_404;
+extern char *H1_RESPONSE_400;
+extern char *H1_RESPONSE_404;
 
 struct http_header
 {
