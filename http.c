@@ -1,15 +1,16 @@
 #include "http.h"
 static llhttp_settings_t llhttp_settings;
-static char *H1_400 = "HTTP/1.1 " HTTP_CODE_400 "\r\n"
-                      "Connection: close\r\n"
-                      "Content-Length: 11\r\n"
-                      "\r\n"
-                      "Bad Request";
-unused$ static char *H1_404 = "HTTP/1.1 " HTTP_CODE_404 "\r\n"
-                              "Connection: close\r\n"
-                              "Content-Length: 9\r\n"
-                              "\r\n"
-                              "Not Found";
+char *EMPTYCSTR = "";
+char *H1_400 = "HTTP/1.1 " HTTP_CODE_400 "\r\n"
+               "Connection: close\r\n"
+               "Content-Length: 11\r\n"
+               "\r\n"
+               "Bad Request";
+char *H1_404 = "HTTP/1.1 " HTTP_CODE_404 "\r\n"
+               "Connection: close\r\n"
+               "Content-Length: 9\r\n"
+               "\r\n"
+               "Not Found";
 
 static void
 free_header (struct http_client *client)
@@ -208,7 +209,7 @@ header_alloc (struct http_client *client)
   struct http_header *header = malloc (sizeof (*header) + cap);
   if (!header)
     return null;
-  header->value = null;
+  header->value = EMPTYCSTR;
   header->capacity = cap;
   header->size = 0;
   header->field[0] = '\0';
@@ -232,13 +233,14 @@ static struct http_header *
 header_reserve (struct http_header **slot, usz size)
 {
   struct http_header *header = *slot;
+  isz voff = header->value - header->field;
   usz cap = dynarr$ (header->capacity, size);
-  usz voff = header->value ? (usz)(header->value - header->field) : 0;
   header = realloc (header, sizeof (*header) + cap);
   if (!header)
     return null;
   header->capacity = cap;
-  header->value = voff ? header->field + voff : null;
+  if (header->value != EMPTYCSTR)
+    header->value = header->field + voff;
   return *slot = header;
 }
 
@@ -251,14 +253,11 @@ on_header_value (llhttp_t *parser, char const *at, usz len)
       = container_of (parser, struct http_client, parser);
   auto slot = header_last (client);
   if (!slot)
-    slot = header_alloc (client);
-  if (!slot)
-    return HPE_USER;
-  struct http_header *header
-      = header_reserve (slot, (*slot)->size + len + 1 + !!(*slot)->value);
+    return -1;
+  struct http_header *header = header_reserve (slot, (*slot)->size + len + 2);
   if (!header)
     return HPE_USER;
-  if (!header->value)
+  if (header->value == EMPTYCSTR)
     header->value = header->field + ++header->size;
   memcpy (header->field + header->size, at, len);
   header->size += len;
@@ -274,7 +273,7 @@ on_header_field (llhttp_t *parser, char const *at, usz len)
   struct http_client *client
       = container_of (parser, struct http_client, parser);
   auto slot = header_last (client);
-  if (!slot || (*slot)->value)
+  if (!slot && (*slot)->value != (*slot)->field)
     slot = header_alloc (client);
   if (!slot)
     return HPE_USER;
