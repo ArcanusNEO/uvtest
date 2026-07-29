@@ -2,6 +2,7 @@
 #ifndef _H_HTTP_
 #define _H_HTTP_ 1
 
+#include "cmacs.h"
 #include <grimoire.h>
 #include <llhttp.h>
 #include <uv.h>
