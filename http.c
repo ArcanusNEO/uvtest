@@ -162,7 +162,7 @@ on_body (llhttp_t *parser, char const *at, usz len)
 }
 
 static int
-header_compar (void const *u, void const *v)
+header_compare (void const *u, void const *v)
 {
   return strcasecmp ((*(struct http_header const **)u)->field,
                      (*(struct http_header const **)v)->field);
@@ -182,11 +182,11 @@ on_headers_complete (llhttp_t *parser)
   usz nr = client->header->size / sizeof (header[0]);
   if (nr > 0)
     {
-      qsort (header, nr, sizeof (header[0]), header_compar);
+      qsort (header, nr, sizeof (header[0]), header_compare);
       for (usz i = 0; i < nr; ++i)
         clogger (DEBUG, header[i]->field, "=", header[i]->value);
       for (usz i = 1; i < nr; ++i)
-        if (header_compar (&header[i - 1], &header[i]) == 0)
+        if (header_compare (&header[i - 1], &header[i]) == 0)
           return HPE_USER;
     }
   return HPE_OK;
