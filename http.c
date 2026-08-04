@@ -385,7 +385,11 @@ on_connection (uv_stream_t *srv, int status)
       uv_tcp_t *closer = null;
       while (!closer)
         {
+#if _P_PLATFORM_ == (_P_UNIX_ + 0)
           sched_yield ();
+#elif _P_PLATFORM_ == (_P_WINDOWS_ + 0)
+          SwitchToThread ();
+#endif
           closer = malloc (sizeof (*closer));
         }
       uv_tcp_init (srv->loop, closer);
